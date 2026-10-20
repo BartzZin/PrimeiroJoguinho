@@ -374,7 +374,7 @@ class Game:
             "board_fen": self.board.fen(),
             "pieces": [{**asdict(p), "square": algebraic(pos)} for pos, p in self.board.pieces.items()],
             "active_side": self.board.turn,
-            "phase": "move" if player.used_spell else "spell",
+            "phase": "move" if self.players[self.board.turn].used_spell else "spell",
             "public_effects": deepcopy(self.effects),
             "my_hand": deepcopy(player.hand),
             "my_mana": player.mana,

@@ -1,0 +1,9 @@
+* text=auto
+*.py text eol=lf
+*.gd text eol=lf
+*.tscn text eol=lf
+*.godot text eol=lf
+*.ps1 text eol=crlf
+*.glb binary
+*.png binary
+*.exe binary

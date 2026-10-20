@@ -190,3 +190,75 @@ def test_random_invariants():
 
 def test_all_twelve_cards_present():
     assert len(CARDS) == 12
+
+
+def test_shield_expires_after_opponent_move_without_capture():
+    game = Game.new()
+    piece = game.board.pieces[square("a1")]
+    cast(game, "white", "arcane_shield", {"piece_id": piece.id})
+    game.move("white", "e2e4")
+    assert game.affected("shield")
+    game.move("black", "e7e5")
+    assert not game.affected("shield")
+
+
+def test_dispel_unfreezes_friendly_piece():
+    game = Game.new()
+    pawn = game.board.pieces[square("e2")]
+    game.add_effect("frozen", "white", pawn.id)
+    assert "e2e4" not in {m.uci() for m in game.moves()}
+    cast(game, "white", "dispel", {"effect_id": game.effects[0]["id"]})
+    assert "e2e4" in {m.uci() for m in game.moves()}
+
+
+def test_castling_triggers_both_destinations():
+    game = Game.new()
+    game.board = Board.from_fen("4k3/8/8/8/8/8/8/4K2R w K - 0 1")
+    game.traps = [{"id": pos, "owner": "black", "square": square(pos)} for pos in ("f1", "g1")]
+    events = game.move("white", "e1g1")
+    assert len(events) == 3 and not game.traps
+    rook = game.board.pieces[square("f1")]
+    assert game.affected("frozen") == {rook.id}
+    assert game.board.pieces[square("g1")].id not in game.affected("frozen")
+
+
+def test_promoted_piece_retains_trap_effect():
+    game = Game.new()
+    game.board = Board.from_fen("7k/P7/8/8/8/8/8/7K w - - 0 1")
+    pawn_id = game.board.pieces[square("a7")].id
+    game.traps = [{"id": "trap", "owner": "black", "square": square("a8")}]
+    game.move("white", "a7a8n")
+    assert game.board.pieces[square("a8")].kind == "n"
+    assert game.affected("frozen") == {pawn_id}
+
+
+def test_draw_uses_slot_freed_by_card_at_full_hand():
+    game = Game.new()
+    card_id = grant(game, "white", "arcane_draw")
+    player = game.players["white"]
+    player.hand += player.deck[:4]
+    del player.deck[:4]
+    before = len(player.deck)
+    game.cast("white", card_id, {})
+    assert len(player.hand) == 5 and len(player.deck) == before - 1
+
+
+def test_insufficient_mana_and_second_spell_rejected():
+    game = Game.new()
+    instance_id = grant(game, "white", "arcane_shield")
+    game.players["white"].mana = 1
+    before = game.dump()
+    with pytest.raises(RuleError, match="INSUFFICIENT_MANA"):
+        game.cast("white", instance_id, {"piece_id": game.board.pieces[square("a1")].id})
+    assert game.dump() == before
+    game.players["white"].mana = 5
+    game.cast("white", instance_id, {"piece_id": game.board.pieces[square("a1")].id})
+    with pytest.raises(RuleError, match="INVALID_PHASE"):
+        game.cast("white", "forged", {})
+
+
+def test_king_never_targeted_by_piece_spell():
+    game = Game.new()
+    for card, pos in [("arcane_shield", "e1"), ("ward", "e1"), ("frost_bind", "e8")]:
+        with pytest.raises(RuleError, match="INVALID_TARGET"):
+            cast(game, "white", card, {"piece_id": game.board.pieces[square(pos)].id})

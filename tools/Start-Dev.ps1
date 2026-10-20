@@ -6,7 +6,7 @@ if (-not (Test-Path '.env')) { & "$PSScriptRoot/Setup-Dev.ps1" }
 docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
 if ($LASTEXITCODE) {
     Start-Process -FilePath 'C:\Program Files\Docker\Docker\Docker Desktop.exe' -WindowStyle Hidden
-    $deadline = (Get-Date).AddSeconds(120)
+    $deadline = (Get-Date).AddSeconds(300)
     do {
         Start-Sleep -Seconds 2
         docker info --format '{{.ServerVersion}}' 2>$null | Out-Null

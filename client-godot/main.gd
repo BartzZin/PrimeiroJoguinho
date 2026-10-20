@@ -1,0 +1,715 @@
+extends Control
+
+const NAMES = {"p": "Peão", "r": "Torre", "n": "Cavalo", "b": "Bispo", "q": "Dama", "k": "Rei"}
+const MODEL_NAMES = {"p": "pawn", "r": "rook", "n": "knight", "b": "bishop", "q": "queen", "k": "king"}
+const EFFECT_NAMES = {"shield": "escudo", "frozen": "imobilização", "ward": "proteção rúnica", "silence": "silêncio"}
+var server_field: LineEdit
+var invite_field: LineEdit
+var nickname_field: LineEdit
+var room_field: LineEdit
+var status_label: Label
+var info_label: Label
+var clocks_label: Label
+var target_label: Label
+var cards_row: HBoxContainer
+var history_box: VBoxContainer
+var effects_box: VBoxContainer
+var catalogue: RichTextLabel
+var stage: SubViewportContainer
+var viewport: SubViewport
+var camera: Camera3D
+var board_root: Node3D
+var pieces_root: Node3D
+var socket = WebSocketPeer.new()
+var session = {}
+var snapshot = {}
+var cards = {}
+var match_id = ""
+var waiting_room = ""
+var selected_square = ""
+var selected_card = {}
+var selected_target = {}
+var pending = {}
+var reconnecting = false
+var rendered_version = -1
+var room_polling = false
+var refresh_in_progress = false
+var token_deadline = 0
+var profile = "default"
+var top_view = false
+var animate_moves = true
+var camera_yaw = 0.0
+var camera_pitch = 0.85
+var camera_distance = 12.0
+var connected_match_id = ""
+var directional_light: DirectionalLight3D
+
+
+func _ready():
+	Engine.max_fps = 60
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--profile="):
+			profile = argument.trim_prefix("--profile=").validate_filename()
+	build_ui()
+	build_stage()
+	var config = ConfigFile.new()
+	if config.load("user://session_" + profile + ".cfg") == OK:
+		server_field.text = config.get_value("session", "server", server_field.text)
+		session["refresh_token"] = config.get_value("session", "refresh_token", "")
+		await refresh_session()
+	await load_catalogue()
+	var timer = Timer.new()
+	timer.wait_time = 2
+	timer.timeout.connect(poll_room)
+	add_child(timer)
+	timer.start()
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--smoke="):
+			await smoke_test(argument.trim_prefix("--smoke="))
+		elif argument.begins_with("--bootstrap="):
+			var path = argument.trim_prefix("--bootstrap=")
+			var file = FileAccess.open(path, FileAccess.READ)
+			if file != null:
+				var data = JSON.parse_string(file.get_as_text())
+				file.close()
+				DirAccess.remove_absolute(path)
+				server_field.text = data.server
+				save_session(data.session)
+				match_id = data.match_id
+				connect_match()
+
+
+func label(text_value, parent, size_value = 17):
+	var control = Label.new()
+	control.text = text_value
+	control.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	control.add_theme_font_size_override("font_size", size_value)
+	parent.add_child(control)
+	return control
+
+
+func button(text_value, parent, action):
+	var control = Button.new()
+	control.text = text_value
+	control.custom_minimum_size.y = 38
+	control.pressed.connect(action)
+	parent.add_child(control)
+	return control
+
+
+func field(placeholder, parent, initial = ""):
+	var control = LineEdit.new()
+	control.placeholder_text = placeholder
+	control.text = initial
+	control.custom_minimum_size.y = 38
+	parent.add_child(control)
+	return control
+
+
+func build_ui():
+	var background = ColorRect.new()
+	background.color = Color("0a1121")
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(background)
+	var margin = MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for edge in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + edge, 14)
+	add_child(margin)
+	var layout = HBoxContainer.new()
+	layout.add_theme_constant_override("separation", 16)
+	margin.add_child(layout)
+	var main_column = VBoxContainer.new()
+	main_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	layout.add_child(main_column)
+	label("XADREZ ARCANO   /   ALPHA", main_column, 26)
+	clocks_label = label("SOLAR  10:00     •     LUNAR  10:00", main_column, 23)
+	stage = SubViewportContainer.new()
+	stage.stretch = true
+	stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stage.custom_minimum_size = Vector2(500, 340)
+	main_column.add_child(stage)
+	stage.gui_input.connect(board_input)
+	viewport = SubViewport.new()
+	viewport.size = Vector2i(900, 650)
+	viewport.own_world_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	stage.add_child(viewport)
+	info_label = label("Entre com um convite para criar uma sala ou iniciar o tutorial.", main_column)
+	cards_row = HBoxContainer.new()
+	cards_row.custom_minimum_size.y = 140
+	main_column.add_child(cards_row)
+	status_label = label("Pronto. O servidor confirma todas as ações.", main_column, 15)
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size.x = 320
+	layout.add_child(scroll)
+	var sidebar = VBoxContainer.new()
+	sidebar.custom_minimum_size.x = 300
+	sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(sidebar)
+	label("CONEXÃO", sidebar, 20)
+	server_field = field("Servidor HTTPS", sidebar, "http://127.0.0.1:8000")
+	nickname_field = field("Seu nome", sidebar, "Jogador")
+	invite_field = field("Convite de acesso (uso único)", sidebar)
+	invite_field.secret = true
+	button("Entrar com convite", sidebar, login)
+	button("Renovar sessão", sidebar, refresh_session)
+	label("SALA PRIVADA", sidebar, 20)
+	room_field = field("Código da sala", sidebar)
+	button("Criar sala", sidebar, create_room)
+	button("Copiar código", sidebar, func(): DisplayServer.clipboard_set(room_field.text))
+	button("Entrar na sala", sidebar, join_room)
+	button("Reconectar partida", sidebar, connect_match)
+	label("TUTORIAL GUIADO", sidebar, 20)
+	for lesson in ["movement", "shield", "trap"]:
+		var titles = {"movement": "1. Movimento", "shield": "2. Defesa mágica", "trap": "3. Armadilha"}
+		button(titles[lesson], sidebar, start_tutorial.bind(lesson))
+	label("AÇÃO SELECIONADA", sidebar, 20)
+	target_label = label("Selecione uma peça ou carta.", sidebar)
+	button("Conjurar no alvo selecionado", sidebar, cast_selected)
+	button("Cancelar seleção", sidebar, clear_selection)
+	effects_box = VBoxContainer.new()
+	sidebar.add_child(effects_box)
+	button("Oferecer empate", sidebar, send_command.bind("draw.offer", {}))
+	button("Aceitar empate", sidebar, send_command.bind("draw.respond", {"accept": true}))
+	button("Recusar empate", sidebar, send_command.bind("draw.respond", {"accept": false}))
+	button("Desistir…", sidebar, confirm_resign)
+	label("APRESENTAÇÃO", sidebar, 20)
+	button("Alternar câmera superior", sidebar, func(): top_view = not top_view; position_camera())
+	var animations = CheckButton.new()
+	animations.text = "Animações de movimento"
+	animations.button_pressed = true
+	animations.toggled.connect(func(value): animate_moves = value)
+	sidebar.add_child(animations)
+	var quality = OptionButton.new()
+	for option in ["Baixo • sem sombras", "Médio", "Alto • suavização"]:
+		quality.add_item(option)
+	quality.item_selected.connect(func(index): viewport.msaa_3d = Viewport.MSAA_2X if index == 2 else Viewport.MSAA_DISABLED; directional_light.shadow_enabled = index > 0)
+	sidebar.add_child(quality)
+	label("HISTÓRICO", sidebar, 20)
+	button("Minhas partidas", sidebar, load_matches)
+	button("Eventos desta partida", sidebar, load_history)
+	history_box = VBoxContainer.new()
+	sidebar.add_child(history_box)
+	label("CATÁLOGO • 12 CARTAS", sidebar, 20)
+	catalogue = RichTextLabel.new()
+	catalogue.bbcode_enabled = true
+	catalogue.custom_minimum_size.y = 270
+	sidebar.add_child(catalogue)
+	label("Alpha: sem repetição e regras de 50/75 lances. Empate material apenas rei contra rei.", sidebar, 14)
+
+
+func material(color_value):
+	var result = StandardMaterial3D.new()
+	result.albedo_color = color_value
+	result.roughness = 0.46
+	result.metallic = 0.24
+	return result
+
+
+func build_stage():
+	var world = WorldEnvironment.new()
+	world.environment = Environment.new()
+	world.environment.background_mode = Environment.BG_COLOR
+	world.environment.background_color = Color("101c31")
+	world.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	world.environment.ambient_light_color = Color("c6d9f0")
+	world.environment.ambient_light_energy = 0.7
+	viewport.add_child(world)
+	var light = DirectionalLight3D.new()
+	directional_light = light
+	light.rotation_degrees = Vector3(-60, -25, 0)
+	light.light_energy = 1.25
+	viewport.add_child(light)
+	camera = Camera3D.new()
+	camera.fov = 48
+	viewport.add_child(camera)
+	position_camera()
+	board_root = Node3D.new()
+	viewport.add_child(board_root)
+	var foundation = MeshInstance3D.new()
+	foundation.mesh = BoxMesh.new()
+	foundation.mesh.size = Vector3(8.28, 0.24, 8.28)
+	foundation.position.y = -0.2
+	foundation.material_override = material(Color("9b7945"))
+	viewport.add_child(foundation)
+	for rank in range(8):
+		for file in range(8):
+			var name_value = "abcdefgh"[file] + str(rank + 1)
+			var body = StaticBody3D.new()
+			body.set_meta("square", name_value)
+			body.position = world_square(name_value)
+			var mesh = MeshInstance3D.new()
+			mesh.mesh = BoxMesh.new()
+			mesh.mesh.size = Vector3(0.98, 0.18, 0.98)
+			mesh.material_override = material(Color("d9d1ba") if (file + rank) % 2 else Color("34445b"))
+			body.add_child(mesh)
+			var collision = CollisionShape3D.new()
+			collision.shape = BoxShape3D.new()
+			collision.shape.size = Vector3(1, 0.3, 1)
+			body.add_child(collision)
+			board_root.add_child(body)
+	pieces_root = Node3D.new()
+	viewport.add_child(pieces_root)
+	for file in range(8):
+		var coordinate = Label3D.new()
+		coordinate.text = "abcdefgh"[file]
+		coordinate.position = Vector3(file - 3.5, 0, 4.25)
+		coordinate.rotation_degrees.x = -90
+		coordinate.font_size = 55
+		viewport.add_child(coordinate)
+
+
+func position_camera():
+	var reverse = -1.0 if snapshot.get("viewer_side", "white") == "black" else 1.0
+	if top_view:
+		camera.position = Vector3(0, 13, 0.01 * reverse)
+	else:
+		camera.position = Vector3(sin(camera_yaw) * cos(camera_pitch), sin(camera_pitch), cos(camera_yaw) * cos(camera_pitch) * reverse) * camera_distance
+	camera.look_at(Vector3.ZERO)
+
+
+func world_square(value):
+	return Vector3("abcdefgh".find(value[0]) - 3.5, 0, 3.5 - (int(value[1]) - 1))
+
+
+func api(method, path, body = {}):
+	var base = server_field.text.trim_suffix("/")
+	if not (base.begins_with("https://") or base.begins_with("http://127.0.0.1:") or base.begins_with("http://localhost:")):
+		status_label.text = "Use HTTPS para servidores externos."
+		return {}
+	var request = HTTPRequest.new()
+	request.timeout = 12
+	add_child(request)
+	var headers = PackedStringArray(["Content-Type: application/json"])
+	if session.has("access_token"):
+		headers.append("Authorization: Bearer " + session.access_token)
+	var error = request.request(base + path, headers, method, JSON.stringify(body) if method != HTTPClient.METHOD_GET else "")
+	if error != OK:
+		request.queue_free()
+		status_label.text = "Não foi possível iniciar a conexão."
+		return {}
+	var response = await request.request_completed
+	request.queue_free()
+	var parsed = JSON.parse_string(response[3].get_string_from_utf8())
+	if response[1] < 200 or response[1] >= 300:
+		status_label.text = "Servidor: " + str(parsed)
+		return {}
+	return parsed if parsed != null else {}
+
+
+func save_session(data):
+	session = data
+	token_deadline = Time.get_ticks_msec() + int(data.get("expires_in", 1800)) * 1000
+	var config = ConfigFile.new()
+	config.set_value("session", "server", server_field.text)
+	config.set_value("session", "refresh_token", session.refresh_token)
+	config.save("user://session_" + profile + ".cfg")
+	status_label.text = "Sessão autenticada. Crie uma sala ou inicie um tutorial."
+
+
+func login():
+	var data = await api(HTTPClient.METHOD_POST, "/v1/auth/invite", {"invite": invite_field.text, "nickname": nickname_field.text})
+	if data.has("access_token"):
+		save_session(data)
+		invite_field.text = ""
+		await load_catalogue()
+
+
+func refresh_session():
+	if refresh_in_progress or not session.has("refresh_token"):
+		return
+	refresh_in_progress = true
+	var data = await api(HTTPClient.METHOD_POST, "/v1/auth/refresh", {"refresh_token": session.refresh_token})
+	if data.has("access_token"):
+		save_session(data)
+	else:
+		token_deadline = Time.get_ticks_msec() + 90000
+	refresh_in_progress = false
+
+
+func load_catalogue():
+	var data = await api(HTTPClient.METHOD_GET, "/v1/cards")
+	if data is Array:
+		catalogue.text = ""
+		for card in data:
+			cards[card.id] = card
+			catalogue.append_text("[b]" + card.name + " • " + str(card.mana_cost) + " mana[/b]\n" + card.text + "\n\n")
+
+
+func create_room():
+	var data = await api(HTTPClient.METHOD_POST, "/v1/rooms")
+	if data.has("code"):
+		waiting_room = data.code
+		room_field.text = data.code
+		status_label.text = "Sala criada. Compartilhe o código com outro convidado."
+
+
+func poll_room():
+	if waiting_room == "" or room_polling:
+		return
+	room_polling = true
+	var data = await api(HTTPClient.METHOD_GET, "/v1/rooms/" + waiting_room)
+	room_polling = false
+	if data.get("match_id") != null:
+		waiting_room = ""
+		match_id = data.match_id
+		connect_match()
+
+
+func join_room():
+	var data = await api(HTTPClient.METHOD_POST, "/v1/rooms/" + room_field.text.strip_edges() + "/join")
+	if data.has("match_id"):
+		match_id = data.match_id
+		waiting_room = ""
+		connect_match()
+
+
+func start_tutorial(scenario):
+	var data = await api(HTTPClient.METHOD_POST, "/v1/tutorials/" + scenario + "/start")
+	if data.has("match_id"):
+		match_id = data.match_id
+		waiting_room = ""
+		info_label.text = data.text
+		connect_match()
+
+
+func connect_match():
+	if match_id == "" or not session.has("access_token"):
+		return
+	var address = server_field.text
+	if not (address.begins_with("https://") or address.begins_with("http://127.0.0.1:") or address.begins_with("http://localhost:")):
+		status_label.text = "Use HTTPS para servidores externos."
+		return
+	if connected_match_id != match_id:
+		pending.clear()
+		snapshot.clear()
+		connected_match_id = match_id
+	socket.close()
+	socket = WebSocketPeer.new()
+	socket.handshake_headers = PackedStringArray(["Authorization: Bearer " + session.access_token])
+	var base = server_field.text.trim_suffix("/").replace("https://", "wss://").replace("http://", "ws://")
+	socket.connect_to_url(base + "/v1/ws/match/" + match_id)
+	rendered_version = -1
+	status_label.text = "Conectando à partida…"
+
+
+func _process(_delta):
+	socket.poll()
+	if session.has("access_token") and Time.get_ticks_msec() > token_deadline - 60000 and not refresh_in_progress:
+		refresh_session()
+	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		while socket.get_available_packet_count() > 0:
+			var data = JSON.parse_string(socket.get_packet().get_string_from_utf8())
+			if data is Dictionary:
+				handle_message(data)
+		for key in pending:
+			if Time.get_ticks_msec() - pending[key].sent_at > 5000:
+				socket.send_text(JSON.stringify(pending[key].command))
+				pending[key].sent_at = Time.get_ticks_msec()
+	elif socket.get_ready_state() == WebSocketPeer.STATE_CLOSED and match_id != "" and not reconnecting:
+		reconnect()
+
+
+func reconnect():
+	reconnecting = true
+	status_label.text = "Conexão perdida; relógio continua. Reconectando…"
+	await get_tree().create_timer(3).timeout
+	if session.has("refresh_token"):
+		await refresh_session()
+	connect_match()
+	reconnecting = false
+
+
+func handle_message(data):
+	if data.type == "match.snapshot":
+		snapshot = data
+		var clocks = data.clock_ms
+		clocks_label.text = "SOLAR  %s     •     LUNAR  %s" % [clock_text(clocks.white), clock_text(clocks.black)]
+		if data.state_version != rendered_version:
+			rendered_version = data.state_version
+			render_snapshot()
+	elif data.type == "clock.sync":
+		handle_message(data.snapshot)
+	elif data.type in ["command.accepted", "command.rejected"]:
+		pending.erase(data.get("request_id", ""))
+		if data.type == "command.rejected":
+			status_label.text = "Ação recusada: " + data.get("code", "INVALID_PAYLOAD")
+		else:
+			status_label.text = "Ação confirmada pelo servidor."
+
+
+func clock_text(milliseconds):
+	var seconds = int(ceil(milliseconds / 1000.0))
+	return "%02d:%02d" % [seconds / 60, seconds % 60]
+
+
+func send_command(kind, payload):
+	if snapshot.is_empty() or socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		status_label.text = "Conecte a uma partida primeiro."
+		return
+	if not pending.is_empty():
+		status_label.text = "Aguardando confirmação da ação anterior."
+		return
+	var request_id = Crypto.new().generate_random_bytes(16).hex_encode()
+	var command = {"type": kind, "request_id": request_id, "match_id": match_id,
+		"protocol_version": 1, "expected_version": int(snapshot.state_version), "payload": payload}
+	pending[request_id] = {"command": command, "sent_at": Time.get_ticks_msec()}
+	socket.send_text(JSON.stringify(command))
+
+
+func render_snapshot():
+	position_camera()
+	var previous = {}
+	for child in pieces_root.get_children():
+		previous[child.name] = child.position
+		child.free()
+	for piece in snapshot.pieces:
+		var root = Node3D.new()
+		root.name = piece.id
+		var destination = world_square(piece.square) + Vector3(0, 0.12, 0)
+		root.position = previous.get(piece.id, destination) if animate_moves else destination
+		var model_path = "res://assets/models/" + MODEL_NAMES[piece.kind] + ".glb"
+		if ResourceLoader.exists(model_path):
+			var model = load(model_path).instantiate()
+			root.add_child(model)
+			paint_model(model, material(Color("dce9f5") if piece.side == "white" else Color("b94f65")))
+		else:
+			var fallback = MeshInstance3D.new()
+			fallback.mesh = CylinderMesh.new()
+			fallback.mesh.top_radius = 0.2
+			fallback.mesh.bottom_radius = 0.3
+			fallback.mesh.height = 0.65
+			fallback.position.y = 0.35
+			fallback.material_override = material(Color("dce9f5") if piece.side == "white" else Color("b94f65"))
+			root.add_child(fallback)
+		pieces_root.add_child(root)
+		for effect in snapshot.public_effects:
+			if effect.get("piece_id") == piece.id:
+				var ring = MeshInstance3D.new()
+				ring.mesh = TorusMesh.new()
+				ring.mesh.inner_radius = 0.32
+				ring.mesh.outer_radius = 0.4
+				ring.position.y = 0.2 + root.get_child_count() * 0.09
+				var tint = Color("55d7ff") if effect.kind == "shield" else Color("997cff")
+				ring.material_override = material(tint)
+				root.add_child(ring)
+		if animate_moves and root.position != destination:
+			create_tween().tween_property(root, "position", destination, 0.2)
+	for child in cards_row.get_children():
+		child.queue_free()
+	for card in snapshot.my_hand:
+		var definition = cards.get(card.definition_id, {"name": card.definition_id, "mana_cost": 0, "text": ""})
+		var card_button = button("", cards_row, select_card.bind(card))
+		card_button.custom_minimum_size = Vector2(140, 135)
+		card_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card_button.tooltip_text = definition.text
+		card_button.disabled = not snapshot.can_cast or snapshot.my_mana < definition.mana_cost
+		var card_layout = VBoxContainer.new()
+		card_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		card_layout.offset_left = 6
+		card_layout.offset_right = -6
+		card_layout.offset_top = 8
+		card_layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_button.add_child(card_layout)
+		var icon = TextureRect.new()
+		icon.texture = load("res://assets/cards/" + card.definition_id + ".svg")
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size.y = 44
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_layout.add_child(icon)
+		var title = label(definition.name, card_layout, 16)
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var cost_label = label(str(int(definition.mana_cost)) + " MANA", card_layout, 15)
+		cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cost_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if snapshot.tutorial == null:
+		info_label.text = "%s • Sua mana %s/5 • Rival %s/5 • Mão rival %s • Baralho %s" % ["Sua vez" if snapshot.active_side == snapshot.viewer_side else "Vez do adversário", int(snapshot.my_mana), int(snapshot.opponent_mana), int(snapshot.opponent_hand_count), int(snapshot.my_deck_count)]
+	if snapshot.status != "active":
+		info_label.text = "Partida encerrada: " + str(snapshot.result_reason) + " • Vencedor: " + str(snapshot.winner)
+	elif snapshot.draw_offer != null:
+		status_label.text = "Oferta de empate pendente de " + str(snapshot.draw_offer)
+	clear_selection()
+
+
+func paint_model(node, paint):
+	if node is MeshInstance3D:
+		node.material_override = paint
+	for child in node.get_children():
+		paint_model(child, paint)
+
+
+func clear_selection():
+	selected_square = ""
+	selected_card = {}
+	selected_target = {}
+	target_label.text = "Selecione uma peça ou carta."
+	for child in effects_box.get_children():
+		child.queue_free()
+	update_tiles()
+
+
+func update_tiles():
+	for tile in board_root.get_children():
+		var pos = tile.get_meta("square")
+		var file = "abcdefgh".find(pos[0])
+		var rank = int(pos[1]) - 1
+		var color_value = Color("d9d1ba") if (file + rank) % 2 else Color("34445b")
+		for trap in snapshot.get("my_traps", []):
+			if trap.square == pos:
+				color_value = Color("257e78")
+		for trap in snapshot.get("revealed_traps", []):
+			if trap.square == pos:
+				color_value = Color("bb5471")
+		for move in snapshot.get("legal_moves", []):
+			if selected_square != "" and move.substr(0, 2) == selected_square and move.substr(2, 2) == pos:
+				color_value = Color("4a936b")
+		if pos == selected_square:
+			color_value = Color("d3aa45")
+		tile.get_child(0).material_override = material(color_value)
+
+
+func board_input(event):
+	if event is InputEventMouseMotion and event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+		camera_yaw -= event.relative.x * 0.005
+		camera_pitch = clamp(camera_pitch + event.relative.y * 0.005, 0.5, 1.45)
+		position_camera()
+	if not event is InputEventMouseButton or not event.pressed:
+		return
+	if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		camera_distance = clamp(camera_distance + (-0.5 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.5), 9, 17)
+		position_camera()
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT or snapshot.is_empty():
+		return
+	var origin = camera.project_ray_origin(event.position)
+	var query = PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(event.position) * 100)
+	var hit = viewport.world_3d.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return
+	click_square(hit.collider.get_meta("square"))
+
+
+func click_square(pos):
+	var piece = {}
+	for candidate in snapshot.pieces:
+		if candidate.square == pos:
+			piece = candidate
+	if not selected_card.is_empty():
+		var kind = selected_card.definition_id
+		if kind in ["hidden_snare", "oracle_eye", "trap_disarm"]:
+			selected_target = {"square": pos}
+		elif kind == "dispel":
+			for child in effects_box.get_children():
+				child.queue_free()
+			for effect in snapshot.public_effects:
+				if effect.get("piece_id") == piece.get("id") and effect.kind in ["shield", "frozen"]:
+					button("Remover " + EFFECT_NAMES[effect.kind], effects_box, func(): selected_target = {"effect_id": effect.id}; target_label.text = "Efeito selecionado: " + EFFECT_NAMES[effect.kind])
+		else:
+			selected_target = {"piece_id": piece.get("id", "")}
+		selected_square = pos
+		target_label.text = "Alvo: " + pos + ". Confirme Conjurar."
+		update_tiles()
+		return
+	var possible = []
+	for move in snapshot.get("legal_moves", []):
+		if move.begins_with(selected_square + pos) and selected_square != "":
+			possible.append(move)
+	if not possible.is_empty():
+		if possible[0].length() == 5:
+			choose_promotion(selected_square, pos)
+		else:
+			send_command("move.request", {"from": selected_square, "to": pos})
+		return
+	selected_square = pos
+	target_label.text = pos + (" • " + NAMES[piece.kind] if not piece.is_empty() else " • casa vazia")
+	update_tiles()
+
+
+func choose_promotion(origin, target):
+	var dialog = AcceptDialog.new()
+	dialog.title = "Escolha a promoção"
+	dialog.dialog_text = "A escolha é obrigatória; o relógio continua."
+	var row = HBoxContainer.new()
+	dialog.add_child(row)
+	for kind in ["q", "r", "b", "n"]:
+		button(NAMES[kind], row, func(): send_command("move.request", {"from": origin, "to": target, "promotion": kind}); dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(430, 150))
+
+
+func select_card(card):
+	clear_selection()
+	selected_card = card
+	target_label.text = cards.get(card.definition_id, {"name": card.definition_id}).name + ": selecione o alvo e confirme."
+	if card.definition_id in ["arcane_focus", "arcane_draw", "silence_seal", "temporal_boost"]:
+		target_label.text = "Alvo automático. Confirme Conjurar."
+
+
+func cast_selected():
+	if selected_card.is_empty():
+		return
+	send_command("spell.request", {"card_instance_id": selected_card.instance_id, "target": selected_target})
+
+
+func confirm_resign():
+	var dialog = ConfirmationDialog.new()
+	dialog.dialog_text = "Desistir desta partida?"
+	dialog.confirmed.connect(func(): send_command("match.resign", {}); dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+func load_matches():
+	var data = await api(HTTPClient.METHOD_GET, "/v1/matches")
+	for child in history_box.get_children():
+		child.queue_free()
+	if data is Array:
+		for item in data:
+			button(item.id.substr(0, 8) + " • " + item.status, history_box, func(): match_id = item.id; pending.clear(); connect_match())
+
+
+func load_history():
+	if match_id == "":
+		return
+	var data = await api(HTTPClient.METHOD_GET, "/v1/matches/" + match_id + "/history")
+	for child in history_box.get_children():
+		child.queue_free()
+	if data is Array:
+		for event in data:
+			label(str(event.seq) + " • " + event.type + " " + str(event.get("move", event.get("card", event.get("reason", "")))), history_box, 14)
+
+
+func smoke_test(path):
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		get_tree().quit(2)
+		return
+	var data = JSON.parse_string(file.get_as_text())
+	session = data.session
+	token_deadline = Time.get_ticks_msec() + 1800000
+	server_field.text = data.server
+	match_id = data.match_id
+	connect_match()
+	await get_tree().create_timer(3).timeout
+	if snapshot.is_empty():
+		push_error("SMOKE_NO_SNAPSHOT")
+		get_tree().quit(3)
+		return
+	print("SMOKE_CONNECTED ", snapshot.viewer_side, " version=", snapshot.state_version)
+	if data.has("move"):
+		send_command("move.request", {"from": data.move.substr(0, 2), "to": data.move.substr(2, 2)})
+	await get_tree().create_timer(2).timeout
+	var deadline = Time.get_ticks_msec() + 8000
+	while snapshot.state_version < int(data.get("expected_version", 0)) and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.2).timeout
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(path + ".png")
+	print("SMOKE_FINAL version=", snapshot.state_version)
+	var report = FileAccess.open(path + ".result.json", FileAccess.WRITE)
+	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces}))
+	report.close()
+	get_tree().quit(0 if snapshot.state_version >= int(data.get("expected_version", 0)) else 4)

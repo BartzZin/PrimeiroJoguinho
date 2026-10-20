@@ -42,3 +42,13 @@ def test_frozen_rook_prevents_castling_but_still_attacks():
 def test_fen_roundtrip():
     board = Board.from_fen()
     assert Board.from_fen(board.fen()).fen() == board.fen()
+
+
+def test_en_passant_endgame_perft():
+    board = Board.from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1")
+    assert perft(board, 3) == 2812
+
+
+def test_pinned_piece_counts_as_attacker():
+    board = Board.from_fen("4k3/4n3/8/8/8/8/8/K3R3 w - - 0 1")
+    assert board.attacked(square("d5"), "black")
