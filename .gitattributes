@@ -4,6 +4,7 @@
 *.tscn text eol=lf
 *.godot text eol=lf
 *.ps1 text eol=crlf
+*.cmd text eol=crlf
 *.glb binary
 *.png binary
 *.exe binary

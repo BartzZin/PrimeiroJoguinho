@@ -3,16 +3,21 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
 if (-not (Test-Path '.env')) { & "$PSScriptRoot/Setup-Dev.ps1" }
-docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
-if ($LASTEXITCODE) {
+function Test-DockerReady {
+    # Windows PowerShell 5.1 treats native stderr as ErrorRecords. A stopped
+    # daemon is expected here and must not abort the launcher under Stop.
+    $ErrorActionPreference = 'Continue'
+    docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+if (-not (Test-DockerReady)) {
     Start-Process -FilePath 'C:\Program Files\Docker\Docker\Docker Desktop.exe' -WindowStyle Hidden
     $deadline = (Get-Date).AddSeconds(300)
     do {
         Start-Sleep -Seconds 2
-        docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
-        if (-not $LASTEXITCODE) { break }
+        if (Test-DockerReady) { break }
     } while ((Get-Date) -lt $deadline)
-    if ($LASTEXITCODE) { throw 'Docker não iniciou. Verifique WSL2/virtualização no Docker Desktop.' }
+    if (-not (Test-DockerReady)) { throw 'Docker não iniciou. Verifique WSL2/virtualização no Docker Desktop.' }
 }
 docker compose --env-file .env -f ops/compose.yaml up -d --build --wait
 if ($LASTEXITCODE) { throw 'Falha ao iniciar containers do projeto' }

@@ -12,12 +12,16 @@ Ferramentas serão portáteis quando possível. Nenhum aplicativo, container ou 
 
 ## Preparação e execução
 
-No PowerShell, dentro desta pasta:
+**Neste computador, as ferramentas já estão instaladas. Abra `Jogar.cmd` com dois cliques**, na pasta do projeto. Ele inicia o servidor e abre duas janelas já autenticadas, uma para cada lado. Não é necessário preencher convite ou sala. Para encerrar o servidor depois de fechar as janelas, abra `Parar.cmd`.
+
+Os arquivos `.cmd` usam uma política de execução apenas para o processo que abre o jogo. Não alteram a configuração permanente do PowerShell nem adicionam programas à inicialização do Windows.
+
+Para preparar uma cópia nova, no PowerShell dentro desta pasta:
 
 ```powershell
-./tools/Install-Tools.ps1   # Godot + templates e Blender portáteis, com checksums
-./tools/Setup-Dev.ps1       # ambiente Python, dependências e segredos locais
-./tools/Play-Local.ps1      # inicia containers e abre duas janelas autenticadas
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Install-Tools.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Setup-Dev.ps1
+.\Jogar.cmd
 ```
 
 Na primeira vez o Docker pode demorar a abrir. Requer Docker Desktop com WSL2/virtualização já configurados e Python 3.13. As instalações não criam entradas de inicialização do Windows. Não é preciso abrir o Blender para jogar.
