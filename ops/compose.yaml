@@ -1,0 +1,32 @@
+name: xadrez-arcano
+services:
+  db:
+    image: postgres:18
+    restart: "no"
+    environment:
+      POSTGRES_USER: arcano
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD em .env}
+      POSTGRES_DB: arcano
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arcano -d arcano"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  api:
+    build:
+      context: ../server
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql+psycopg://arcano:${POSTGRES_PASSWORD}@db:5432/arcano
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Configure ADMIN_TOKEN em .env}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  postgres-data:
