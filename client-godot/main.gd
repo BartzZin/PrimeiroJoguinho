@@ -4,6 +4,11 @@ const NAMES = {"p": "Peão", "r": "Torre", "n": "Cavalo", "b": "Bispo", "q": "Da
 const PIECE_MODELS = preload("res://piece_models.gd")
 const BOARD_FRAME = preload("res://assets/board/frame.glb")
 const STONE_SHADER = preload("res://assets/board/stone.gdshader")
+const DIAGNOSTICS = preload("res://diagnostics.gd")
+const PREFERENCES = preload("res://preferences.gd")
+const SETTINGS_MENU = preload("res://settings_menu.gd")
+const CONNECTION_TIMEOUT_MS = 10000
+const RETRY_DELAYS_MS = [2000, 4000, 8000]
 const EFFECT_NAMES = {"shield": "escudo", "frozen": "imobilização", "ward": "proteção rúnica", "silence": "silêncio"}
 var server_field: LineEdit
 var invite_field: LineEdit
@@ -32,7 +37,18 @@ var selected_square = ""
 var selected_card = {}
 var selected_target = {}
 var pending = {}
-var reconnecting = false
+var connection_state = "idle"
+var connection_generation = 0
+var connection_attempt = 0
+var connection_deadline = 0
+var retry_at = 0
+var awaiting_refresh = false
+var connection_label: Label
+var gear_button: Button
+var settings_menu: Control
+var diagnostics: Logger
+var preferences = PREFERENCES.new()
+var queued_picks: Array[Vector2] = []
 var rendered_version = -1
 var room_polling = false
 var refresh_in_progress = false
@@ -53,14 +69,17 @@ func _ready():
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--profile="):
 			profile = argument.trim_prefix("--profile=").validate_filename()
+	diagnostics = DIAGNOSTICS.new()
+	diagnostics.setup(profile)
+	OS.add_logger(diagnostics)
+	var preference_error = preferences.load_profile(profile)
+	diagnostics.detailed = preferences.values.detailed_logs
+	if preference_error != OK:
+		log_event("ERROR", "preferences_load_failed", {"code": error_string(preference_error)})
 	build_ui()
 	build_stage()
-	var config = ConfigFile.new()
-	if config.load("user://session_" + profile + ".cfg") == OK:
-		server_field.text = config.get_value("session", "server", server_field.text)
-		session["refresh_token"] = config.get_value("session", "refresh_token", "")
-		await refresh_session()
-	await load_catalogue()
+	apply_preferences()
+	log_event("INFO", "client_started", {"pid": OS.get_process_id(), "version": ProjectSettings.get_setting("application/config/version", "0.1.0")})
 	var timer = Timer.new()
 	timer.wait_time = 2
 	timer.timeout.connect(poll_room)
@@ -69,17 +88,98 @@ func _ready():
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--smoke="):
 			await smoke_test(argument.trim_prefix("--smoke="))
+			return
 		elif argument.begins_with("--bootstrap="):
-			var path = argument.trim_prefix("--bootstrap=")
-			var file = FileAccess.open(path, FileAccess.READ)
-			if file != null:
-				var data = JSON.parse_string(file.get_as_text())
-				file.close()
-				DirAccess.remove_absolute(path)
+			var data = consume_bootstrap(argument.trim_prefix("--bootstrap="))
+			if not data.is_empty():
 				server_field.text = data.server
 				save_session(data.session)
 				match_id = data.match_id
 				connect_match()
+				await load_catalogue()
+			return
+	var config = ConfigFile.new()
+	if config.load("user://session_" + profile + ".cfg") == OK:
+		server_field.text = config.get_value("session", "server", server_field.text)
+		session["refresh_token"] = config.get_value("session", "refresh_token", "")
+		await refresh_session()
+	await load_catalogue()
+
+
+func consume_bootstrap(path):
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file != null:
+		var parser = JSON.new()
+		var result = parser.parse(file.get_as_text())
+		file.close()
+		DirAccess.remove_absolute(path)
+		if result == OK and parser.data is Dictionary:
+			var data = parser.data
+			if data.get("session") is Dictionary and data.session.get("access_token") is String and data.session.get("refresh_token") is String and data.get("server") is String and data.get("match_id") is String:
+				return data
+	log_event("ERROR", "bootstrap_invalid")
+	set_connection_state("failed")
+	set_status("Não foi possível ler os dados de abertura. Abra Jogar.cmd novamente.")
+	return {}
+
+
+func _exit_tree():
+	socket.close()
+	if diagnostics != null:
+		OS.remove_logger(diagnostics)
+		diagnostics.close()
+
+
+func log_event(level, event, fields = {}):
+	if diagnostics != null:
+		diagnostics.record(level, event, fields)
+
+
+func set_status(text_value):
+	status_label.text = text_value
+	status_label.tooltip_text = text_value
+
+
+func apply_preferences():
+	animate_moves = preferences.values.animations
+	top_view = preferences.values.top_view
+	set_graphics_quality(preferences.values.quality)
+	position_camera()
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if preferences.values.fullscreen else DisplayServer.WINDOW_MODE_MAXIMIZED)
+
+
+func change_setting(key, value):
+	preferences.values[key] = value
+	if key == "detailed_logs":
+		if diagnostics != null:
+			if not value:
+				log_event("INFO", "detailed_logging_disabled")
+			diagnostics.detailed = value
+			if value:
+				log_event("INFO", "detailed_logging_enabled")
+	elif key == "quality":
+		set_graphics_quality(value)
+	elif key == "animations":
+		animate_moves = value
+	elif key == "top_view":
+		top_view = value
+		position_camera()
+	elif key == "fullscreen" and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value else DisplayServer.WINDOW_MODE_MAXIMIZED)
+	if preferences.path != "" and preferences.save() != OK:
+		log_event("ERROR", "preferences_save_failed")
+	settings_menu.present(preferences.values)
+
+
+func open_logs_folder():
+	if diagnostics == null or not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(diagnostics.directory)):
+		set_status("Não foi possível gravar logs. Verifique a permissão da pasta de dados do jogo.")
+		return
+	var result = OS.shell_open(ProjectSettings.globalize_path(diagnostics.directory))
+	if result != OK:
+		log_event("ERROR", "open_logs_failed", {"code": error_string(result)})
+		set_status("Não foi possível abrir a pasta de logs.")
 
 
 func label(text_value, parent, size_value = 20):
@@ -122,9 +222,12 @@ func build_ui():
 	for edge in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + edge, 20)
 	add_child(margin)
+	var outer = VBoxContainer.new()
+	margin.add_child(outer)
 	var layout = HBoxContainer.new()
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_theme_constant_override("separation", 16)
-	margin.add_child(layout)
+	outer.add_child(layout)
 	var main_column = VBoxContainer.new()
 	main_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	layout.add_child(main_column)
@@ -138,7 +241,7 @@ func build_ui():
 	stage.gui_input.connect(board_input)
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(900, 650)
-	viewport.own_world_3d = true
+	viewport.world_3d = World3D.new()
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	stage.add_child(viewport)
@@ -146,7 +249,6 @@ func build_ui():
 	cards_row = HBoxContainer.new()
 	cards_row.custom_minimum_size.y = 140
 	main_column.add_child(cards_row)
-	status_label = label("Pronto. O servidor confirma todas as ações.", main_column, 15)
 	var scroll = ScrollContainer.new()
 	scroll.custom_minimum_size.x = 350
 	layout.add_child(scroll)
@@ -181,20 +283,6 @@ func build_ui():
 	button("Aceitar empate", sidebar, send_command.bind("draw.respond", {"accept": true}))
 	button("Recusar empate", sidebar, send_command.bind("draw.respond", {"accept": false}))
 	button("Desistir…", sidebar, confirm_resign)
-	label("APRESENTAÇÃO", sidebar, 20)
-	button("Tela cheia / janela (F11)", sidebar, toggle_fullscreen)
-	button("Alternar câmera superior", sidebar, func(): top_view = not top_view; position_camera())
-	var animations = CheckButton.new()
-	animations.text = "Animações de movimento"
-	animations.button_pressed = true
-	animations.toggled.connect(func(value): animate_moves = value)
-	sidebar.add_child(animations)
-	var quality = OptionButton.new()
-	for option in ["Baixo • sem sombras", "Médio • suavização 2×", "Alto • suavização 4×"]:
-		quality.add_item(option)
-	quality.select(2)
-	quality.item_selected.connect(set_graphics_quality)
-	sidebar.add_child(quality)
 	label("HISTÓRICO", sidebar, 20)
 	button("Minhas partidas", sidebar, load_matches)
 	button("Eventos desta partida", sidebar, load_history)
@@ -206,6 +294,29 @@ func build_ui():
 	catalogue.custom_minimum_size.y = 270
 	sidebar.add_child(catalogue)
 	label("Alpha: sem repetição e regras de 50/75 lances. Empate material apenas rei contra rei.", sidebar, 14)
+	var footer = HBoxContainer.new()
+	footer.custom_minimum_size.y = 44
+	footer.add_theme_constant_override("separation", 16)
+	outer.add_child(footer)
+	connection_label = label("Sem partida", footer, 16)
+	connection_label.custom_minimum_size.x = 150
+	status_label = label("Pronto. O servidor confirma todas as ações.", footer, 16)
+	status_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gear_button = button("", footer, func(): settings_menu.toggle(preferences.values))
+	gear_button.name = "SettingsGear"
+	gear_button.custom_minimum_size = Vector2(44, 44)
+	gear_button.icon = preload("res://assets/ui/gear.svg")
+	gear_button.expand_icon = true
+	gear_button.add_theme_constant_override("icon_max_width", 24)
+	gear_button.tooltip_text = "Configurações gerais"
+	gear_button.accessibility_name = "Configurações gerais"
+	settings_menu = SETTINGS_MENU.new()
+	settings_menu.anchor_button = gear_button
+	settings_menu.setting_changed.connect(change_setting)
+	settings_menu.open_logs_requested.connect(open_logs_folder)
+	add_child(settings_menu)
 
 
 func apply_ui_theme():
@@ -353,15 +464,19 @@ func add_coordinate(text_value, position_value, yaw):
 
 func toggle_fullscreen():
 	var mode = DisplayServer.window_get_mode()
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED if mode in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN] else DisplayServer.WINDOW_MODE_FULLSCREEN)
+	change_setting("fullscreen", mode not in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN])
 
 
 func _unhandled_key_input(event):
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE and settings_menu.visible:
+			settings_menu.hide()
+			get_viewport().set_input_as_handled()
+			return
 		if event.keycode == KEY_F11:
 			toggle_fullscreen()
 		elif event.keycode == KEY_ESCAPE and DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]:
-			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+			change_setting("fullscreen", false)
 
 
 func position_camera():
@@ -378,28 +493,50 @@ func world_square(value):
 
 
 func api(method, path, body = {}):
+	var result = await api_result(method, path, body)
+	return result.data if result.ok else {}
+
+
+func safe_route(path):
+	var parts = path.split("/")
+	if parts.size() > 3 and parts[2] in ["rooms", "matches", "ws"]:
+		parts[3] = "{id}"
+	return "/".join(parts)
+
+
+func api_result(method, path, body = {}):
 	var base = server_field.text.trim_suffix("/")
 	if not (base.begins_with("https://") or base.begins_with("http://127.0.0.1:") or base.begins_with("http://localhost:")):
-		status_label.text = "Use HTTPS para servidores externos."
-		return {}
+		set_status("Use HTTPS para servidores externos.")
+		log_event("ERROR", "http_invalid_server")
+		return {"ok": false, "data": {}, "status": 0}
 	var request = HTTPRequest.new()
-	request.timeout = 12
+	request.timeout = 10
 	add_child(request)
 	var headers = PackedStringArray(["Content-Type: application/json"])
 	if session.has("access_token"):
 		headers.append("Authorization: Bearer " + session.access_token)
+	var started = Time.get_ticks_msec()
+	log_event("INFO", "http_started", {"stage": safe_route(path)})
 	var error = request.request(base + path, headers, method, JSON.stringify(body) if method != HTTPClient.METHOD_GET else "")
 	if error != OK:
 		request.queue_free()
-		status_label.text = "Não foi possível iniciar a conexão."
-		return {}
+		set_status("Não foi possível iniciar a conexão com o servidor.")
+		log_event("ERROR", "http_start_failed", {"stage": safe_route(path), "code": error_string(error)})
+		return {"ok": false, "data": {}, "status": 0}
 	var response = await request.request_completed
 	request.queue_free()
-	var parsed = JSON.parse_string(response[3].get_string_from_utf8())
-	if response[1] < 200 or response[1] >= 300:
-		status_label.text = "Servidor: " + str(parsed)
-		return {}
-	return parsed if parsed != null else {}
+	var parser = JSON.new()
+	var parse_error = parser.parse(response[3].get_string_from_utf8())
+	var parsed = parser.data if parse_error == OK else null
+	var ok = response[0] == HTTPRequest.RESULT_SUCCESS and response[1] >= 200 and response[1] < 300 and parsed != null
+	var code = "HTTP_%d" % response[1] if response[1] else "SERVER_UNREACHABLE"
+	if parsed is Dictionary and parsed.get("code") is String:
+		code = parsed.code
+	log_event("INFO" if ok else "ERROR", "http_completed" if ok else "http_failed", {"stage": safe_route(path), "status": response[1], "code": "OK" if ok else code, "duration_ms": Time.get_ticks_msec() - started})
+	if not ok:
+		set_status("Falha ao acessar o servidor: " + code + ".")
+	return {"ok": ok, "data": parsed if ok else {}, "status": response[1]}
 
 
 func save_session(data):
@@ -408,8 +545,10 @@ func save_session(data):
 	var config = ConfigFile.new()
 	config.set_value("session", "server", server_field.text)
 	config.set_value("session", "refresh_token", session.refresh_token)
-	config.save("user://session_" + profile + ".cfg")
-	status_label.text = "Sessão autenticada. Crie uma sala ou inicie um tutorial."
+	if config.save("user://session_" + profile + ".cfg") != OK:
+		log_event("ERROR", "session_save_failed")
+	if match_id == "":
+		set_status("Sessão autenticada. Crie uma sala ou inicie um tutorial.")
 
 
 func login():
@@ -420,16 +559,30 @@ func login():
 		await load_catalogue()
 
 
-func refresh_session():
+func refresh_session(reopen_socket = true):
 	if refresh_in_progress or not session.has("refresh_token"):
-		return
+		return false
 	refresh_in_progress = true
-	var data = await api(HTTPClient.METHOD_POST, "/v1/auth/refresh", {"refresh_token": session.refresh_token})
-	if data.has("access_token"):
-		save_session(data)
+	var token = session.refresh_token
+	var generation = connection_generation
+	var result = await api_result(HTTPClient.METHOD_POST, "/v1/auth/refresh", {"refresh_token": token})
+	refresh_in_progress = false
+	# Refresh tokens rotate on the server. Keep the new token for the same
+	# session even if the user changed matches while the request was in flight.
+	if session.get("refresh_token") != token:
+		return false
+	if result.ok and result.data.has("access_token"):
+		save_session(result.data)
+		if reopen_socket and generation == connection_generation and connection_state == "connected":
+			connect_match()
+		return true
+	if result.status == 401:
+		session.clear()
+		_connection_failed("AUTHENTICATION_EXPIRED", 0, true)
+		set_status("Sua sessão expirou. Entre novamente com um convite.")
 	else:
 		token_deadline = Time.get_ticks_msec() + 90000
-	refresh_in_progress = false
+	return false
 
 
 func load_catalogue():
@@ -439,6 +592,8 @@ func load_catalogue():
 		for card in data:
 			cards[card.id] = card
 			catalogue.append_text("[b]" + card.name + " • " + str(card.mana_cost) + " mana[/b]\n" + card.text + "\n\n")
+		if not snapshot.is_empty():
+			render_snapshot()
 
 
 func create_room():
@@ -479,68 +634,203 @@ func start_tutorial(scenario):
 
 
 func connect_match():
+	connection_generation += 1
+	connection_attempt = 0
+	retry_at = 0
+	awaiting_refresh = false
+	queued_picks.clear()
 	if match_id == "" or not session.has("access_token"):
+		set_connection_state("failed")
+		set_status("Entre com um convite e selecione uma partida primeiro.")
 		return
 	var address = server_field.text
 	if not (address.begins_with("https://") or address.begins_with("http://127.0.0.1:") or address.begins_with("http://localhost:")):
-		status_label.text = "Use HTTPS para servidores externos."
+		set_connection_state("failed")
+		set_status("Use HTTPS para servidores externos.")
 		return
 	if connected_match_id != match_id:
 		pending.clear()
 		snapshot.clear()
 		connected_match_id = match_id
+	_begin_connection()
+
+
+func set_connection_state(value):
+	connection_state = value
+	connection_label.text = {"idle": "Sem partida", "connecting": "Conectando", "connected": "Conectado", "reconnecting": "Reconectando", "failed": "Falha na conexão"}[value]
+	connection_label.modulate = Color("70d7b2") if value == "connected" else (Color("ef9b9b") if value == "failed" else Color("d9c18d"))
+
+
+func _begin_connection():
 	socket.close()
 	socket = WebSocketPeer.new()
 	socket.handshake_headers = PackedStringArray(["Authorization: Bearer " + session.access_token])
 	var base = server_field.text.trim_suffix("/").replace("https://", "wss://").replace("http://", "ws://")
-	socket.connect_to_url(base + "/v1/ws/match/" + match_id)
+	set_connection_state("connecting" if connection_attempt == 0 else "reconnecting")
+	set_status("Conectando à partida…" if connection_attempt == 0 else "Reconectando à partida (%d/3)…" % connection_attempt)
+	log_event("INFO", "connection_started", {"match_id": match_id, "attempt": connection_attempt})
+	connection_deadline = Time.get_ticks_msec() + CONNECTION_TIMEOUT_MS
+	var error = socket.connect_to_url(base + "/v1/ws/match/" + match_id)
 	rendered_version = -1
-	status_label.text = "Conectando à partida…"
+	if error != OK:
+		_connection_failed(error_string(error))
+
+
+func _connection_failed(reason, close_code = 0, terminal = false):
+	log_event("ERROR", "connection_failed", {"match_id": match_id, "reason": reason, "close_code": close_code, "attempt": connection_attempt})
+	socket.close()
+	connection_deadline = 0
+	queued_picks.clear()
+	if not terminal and connection_attempt < RETRY_DELAYS_MS.size():
+		retry_at = Time.get_ticks_msec() + RETRY_DELAYS_MS[connection_attempt]
+		connection_attempt += 1
+		set_connection_state("reconnecting")
+		set_status("Conexão interrompida; relógio continua. Nova tentativa em %d s (%d/3)." % [RETRY_DELAYS_MS[connection_attempt - 1] / 1000, connection_attempt])
+	else:
+		retry_at = 0
+		set_connection_state("failed")
+		set_status("Falha na conexão. Verifique o servidor e use Reconectar partida.")
+
+
+func _retry_connection():
+	awaiting_refresh = true
+	var generation = connection_generation
+	if session.has("refresh_token"):
+		await refresh_session(false)
+	if generation != connection_generation:
+		return
+	awaiting_refresh = false
+	if connection_state == "failed":
+		return
+	if not session.has("access_token"):
+		_connection_failed("NOT_AUTHENTICATED", 0, true)
+		return
+	_begin_connection()
 
 
 func _process(_delta):
 	socket.poll()
-	if session.has("access_token") and Time.get_ticks_msec() > token_deadline - 60000 and not refresh_in_progress:
+	var now = Time.get_ticks_msec()
+	if session.has("access_token") and now > token_deadline - 60000 and not refresh_in_progress and not awaiting_refresh and connection_state not in ["connecting", "reconnecting", "failed"]:
 		refresh_session()
+	if retry_at > 0:
+		if now >= retry_at and not refresh_in_progress:
+			retry_at = 0
+			_retry_connection()
+		return
+	if awaiting_refresh or connection_state in ["idle", "failed"]:
+		return
 	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		while socket.get_available_packet_count() > 0:
-			var data = JSON.parse_string(socket.get_packet().get_string_from_utf8())
-			if data is Dictionary:
-				handle_message(data)
-		for key in pending:
-			if Time.get_ticks_msec() - pending[key].sent_at > 5000:
-				socket.send_text(JSON.stringify(pending[key].command))
-				pending[key].sent_at = Time.get_ticks_msec()
-	elif socket.get_ready_state() == WebSocketPeer.STATE_CLOSED and match_id != "" and not reconnecting:
-		reconnect()
+			var parser = JSON.new()
+			if parser.parse(socket.get_packet().get_string_from_utf8()) == OK and parser.data is Dictionary:
+				handle_message(parser.data)
+			else:
+				_connection_failed("INVALID_SERVER_MESSAGE")
+				return
+		if connection_state == "connected":
+			for key in pending:
+				if now - pending[key].sent_at > 5000:
+					log_event("INFO", "command_replayed", {"request_id": key, "kind": pending[key].command.type})
+					socket.send_text(JSON.stringify(pending[key].command))
+					pending[key].sent_at = now
+	elif socket.get_ready_state() == WebSocketPeer.STATE_CLOSED:
+		_connection_failed("SOCKET_CLOSED", socket.get_close_code())
+		return
+	check_connection_timeout(now)
 
 
-func reconnect():
-	reconnecting = true
-	status_label.text = "Conexão perdida; relógio continua. Reconectando…"
-	await get_tree().create_timer(3).timeout
-	if session.has("refresh_token"):
-		await refresh_session()
-	connect_match()
-	reconnecting = false
+func check_connection_timeout(now):
+	if connection_deadline > 0 and now >= connection_deadline:
+		_connection_failed("INITIAL_SNAPSHOT_TIMEOUT")
 
 
 func handle_message(data):
-	if data.type == "match.snapshot":
+	var message_type = data.get("type", "")
+	if message_type == "match.snapshot":
+		if data.get("match_id") != match_id:
+			log_event("INFO", "stale_snapshot_ignored")
+			return
+		if not valid_snapshot(data):
+			_connection_failed("INVALID_SNAPSHOT")
+			return
+		if data.state_version < rendered_version:
+			return
+		var first_snapshot = connection_state != "connected"
 		snapshot = data
+		set_connection_state("connected")
+		connection_deadline = 0
+		retry_at = 0
+		connection_attempt = 0
+		if first_snapshot:
+			set_status("Partida conectada. Você joga com as peças " + ("azuis." if data.viewer_side == "white" else "vermelhas."))
+			log_event("INFO", "connection_ready", {"match_id": match_id, "version": data.state_version, "side": data.viewer_side})
+			for key in pending:
+				pending[key].sent_at = Time.get_ticks_msec() - 5001
 		var clocks = data.clock_ms
 		clocks_label.text = "SOLAR · AZUL  %s     •     LUNAR · VERMELHO  %s" % [clock_text(clocks.white), clock_text(clocks.black)]
 		if data.state_version != rendered_version:
 			rendered_version = data.state_version
 			render_snapshot()
-	elif data.type == "clock.sync":
+	elif message_type == "clock.sync" and data.get("snapshot") is Dictionary:
 		handle_message(data.snapshot)
-	elif data.type in ["command.accepted", "command.rejected"]:
-		pending.erase(data.get("request_id", ""))
-		if data.type == "command.rejected":
-			status_label.text = "Ação recusada: " + data.get("code", "INVALID_PAYLOAD")
+	elif message_type in ["command.accepted", "command.rejected"]:
+		var request_id = data.get("request_id", "")
+		var elapsed = Time.get_ticks_msec() - pending.get(request_id, {}).get("created_at", Time.get_ticks_msec())
+		pending.erase(request_id)
+		if message_type == "command.rejected" and request_id == "":
+			pending.clear()
+		log_event("ERROR" if message_type == "command.rejected" else "INFO", message_type, {"request_id": request_id, "code": data.get("code", "OK"), "duration_ms": elapsed})
+		if message_type == "command.rejected":
+			set_status("Ação recusada: " + data.get("code", "INVALID_PAYLOAD"))
 		else:
-			status_label.text = "Ação confirmada pelo servidor."
+			set_status("Ação confirmada pelo servidor.")
+
+
+func valid_snapshot(data):
+	if data.get("viewer_side") not in ["white", "black"] or data.get("active_side") not in ["white", "black"]:
+		return false
+	if not (data.get("state_version") is float or data.get("state_version") is int) or not data.get("clock_ms") is Dictionary:
+		return false
+	for side in ["white", "black"]:
+		if not (data.clock_ms.get(side) is float or data.clock_ms.get(side) is int):
+			return false
+	for key in ["pieces", "public_effects", "my_hand", "legal_moves"]:
+		if not data.get(key) is Array:
+			return false
+	for key in ["my_mana", "opponent_mana", "opponent_hand_count", "my_deck_count"]:
+		if not (data.get(key) is float or data.get(key) is int):
+			return false
+	for key in ["status", "tutorial", "draw_offer", "can_cast"]:
+		if not data.has(key):
+			return false
+	if data.status not in ["active", "finished", "voided"] or not data.can_cast is bool:
+		return false
+	if data.state_version < 0 or (data.status != "active" and (not data.has("result_reason") or not data.has("winner"))):
+		return false
+	for piece in data.pieces:
+		if not piece is Dictionary or not piece.get("id") is String or piece.get("kind") not in NAMES or piece.get("side") not in ["white", "black"] or not valid_square(piece.get("square")):
+			return false
+	for card in data.my_hand:
+		if not card is Dictionary or not card.get("instance_id") is String or not card.get("definition_id") is String or not card.definition_id.is_valid_identifier():
+			return false
+	for effect in data.public_effects:
+		if not effect is Dictionary or not effect.get("id") is String or not effect.get("kind") is String:
+			return false
+	for move in data.legal_moves:
+		if not move is String or move.length() not in [4, 5] or not valid_square(move.substr(0, 2)) or not valid_square(move.substr(2, 2)):
+			return false
+	for key in ["my_traps", "revealed_traps"]:
+		if not data.get(key, []) is Array:
+			return false
+		for trap in data.get(key, []):
+			if not trap is Dictionary or not valid_square(trap.get("square")):
+				return false
+	return true
+
+
+func valid_square(value):
+	return value is String and value.length() == 2 and value[0] in "abcdefgh" and value[1] in "12345678"
 
 
 func clock_text(milliseconds):
@@ -549,7 +839,7 @@ func clock_text(milliseconds):
 
 
 func send_command(kind, payload):
-	if snapshot.is_empty() or socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
+	if snapshot.is_empty() or connection_state != "connected" or socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		status_label.text = "Conecte a uma partida primeiro."
 		return
 	if not pending.is_empty():
@@ -558,8 +848,11 @@ func send_command(kind, payload):
 	var request_id = Crypto.new().generate_random_bytes(16).hex_encode()
 	var command = {"type": kind, "request_id": request_id, "match_id": match_id,
 		"protocol_version": 1, "expected_version": int(snapshot.state_version), "payload": payload}
-	pending[request_id] = {"command": command, "sent_at": Time.get_ticks_msec()}
-	socket.send_text(JSON.stringify(command))
+	pending[request_id] = {"command": command, "sent_at": Time.get_ticks_msec(), "created_at": Time.get_ticks_msec()}
+	log_event("INFO", "command_sent", {"match_id": match_id, "request_id": request_id, "kind": kind, "version": snapshot.state_version})
+	var error = socket.send_text(JSON.stringify(command))
+	if error != OK:
+		_connection_failed(error_string(error))
 
 
 func render_snapshot():
@@ -666,14 +959,33 @@ func board_input(event):
 		camera_distance = clamp(camera_distance + (-0.5 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.5), 8, 17)
 		position_camera()
 		return
-	if event.button_index != MOUSE_BUTTON_LEFT or snapshot.is_empty():
+	if event.button_index != MOUSE_BUTTON_LEFT or snapshot.is_empty() or connection_state != "connected" or settings_menu.visible:
 		return
-	var origin = camera.project_ray_origin(event.position)
-	var query = PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(event.position) * 100)
-	var hit = viewport.world_3d.direct_space_state.intersect_ray(query)
-	if hit.is_empty():
+	if stage.size.x > 0 and stage.size.y > 0:
+		queued_picks.append(event.position * Vector2(viewport.size) / stage.size)
+
+
+func _physics_process(_delta):
+	if queued_picks.is_empty():
 		return
-	click_square(hit.collider.get_meta("square"))
+	if not is_instance_valid(camera) or not camera.is_inside_tree() or connection_state != "connected" or settings_menu.visible:
+		queued_picks.clear()
+		return
+	var world = camera.get_world_3d()
+	if world == null or world.direct_space_state == null:
+		queued_picks.clear()
+		log_event("ERROR", "board_world_unavailable")
+		set_status("O tabuleiro ainda está carregando. Aguarde e tente novamente.")
+		return
+	while not queued_picks.is_empty():
+		var point = queued_picks.pop_front()
+		var origin = camera.project_ray_origin(point)
+		var query = PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(point) * 100)
+		var hit = world.direct_space_state.intersect_ray(query)
+		if not hit.is_empty() and hit.collider.has_meta("square"):
+			var square = hit.collider.get_meta("square")
+			log_event("INFO", "board_selected", {"square": square})
+			click_square(square)
 
 
 func click_square(pos):
@@ -766,34 +1078,78 @@ func load_history():
 			label(str(event.seq) + " • " + event.type + " " + str(event.get("move", event.get("card", event.get("reason", "")))), history_box, 14)
 
 
+func _smoke_mouse_click(position):
+	var motion = InputEventMouseMotion.new()
+	motion.position = position
+	motion.global_position = position
+	get_viewport().push_input(motion, true)
+	for pressed in [true, false]:
+		var event = InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		event.position = position
+		event.global_position = position
+		event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+		get_viewport().push_input(event, true)
+		await get_tree().physics_frame
+		await get_tree().process_frame
+
+
+func _smoke_click_square(square):
+	var point = camera.unproject_position(world_square(square) + Vector3(0, 0.09, 0))
+	var local = point * stage.size / Vector2(viewport.size)
+	await _smoke_mouse_click(stage.get_global_transform_with_canvas() * local)
+
+
 func smoke_test(path):
-	var file = FileAccess.open(path, FileAccess.READ)
-	if file == null:
+	var data = consume_bootstrap(path)
+	if data.is_empty():
 		get_tree().quit(2)
 		return
-	var data = JSON.parse_string(file.get_as_text())
 	session = data.session
 	token_deadline = Time.get_ticks_msec() + 1800000
 	server_field.text = data.server
 	match_id = data.match_id
 	connect_match()
-	await get_tree().create_timer(3).timeout
-	if snapshot.is_empty():
+	await load_catalogue()
+	var deadline = Time.get_ticks_msec() + 15000
+	while (connection_state != "connected" or snapshot.get("state_version", -1) < int(data.get("wait_for_version", 0))) and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.1).timeout
+	if snapshot.is_empty() or connection_state != "connected":
 		push_error("SMOKE_NO_SNAPSHOT")
 		get_tree().quit(3)
 		return
 	print("SMOKE_CONNECTED ", snapshot.viewer_side, " version=", snapshot.state_version)
 	if data.has("move"):
-		send_command("move.request", {"from": data.move.substr(0, 2), "to": data.move.substr(2, 2)})
-	await get_tree().create_timer(2).timeout
-	var deadline = Time.get_ticks_msec() + 8000
-	while snapshot.state_version < int(data.get("expected_version", 0)) and Time.get_ticks_msec() < deadline:
+		await _smoke_click_square(data.move.substr(0, 2))
+		if selected_square != data.move.substr(0, 2):
+			push_error("SMOKE_MOUSE_SELECTION_FAILED")
+			get_tree().quit(5)
+			return
+		if data.get("reconnect", false):
+			# Pause packet consumption so the test interrupts a real pending command.
+			set_process(false)
+		await _smoke_click_square(data.move.substr(2, 2))
+	var replayed_id = ""
+	if data.get("reconnect", false):
+		if pending.is_empty():
+			push_error("SMOKE_NO_PENDING_COMMAND")
+			get_tree().quit(6)
+			return
+		replayed_id = pending.keys()[0]
+		socket.close()
+		set_process(true)
+	deadline = Time.get_ticks_msec() + 15000
+	while (snapshot.state_version < int(data.get("expected_version", 0)) or connection_state != "connected" or not pending.is_empty()) and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.2).timeout
+	if data.get("show_settings", false):
+		await _smoke_mouse_click(gear_button.get_global_rect().get_center())
+		await get_tree().process_frame
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(path + ".png")
 	print("SMOKE_FINAL version=", snapshot.state_version)
 	var report = FileAccess.open(path + ".result.json", FileAccess.WRITE)
-	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces}))
+	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces, "connection_state": connection_state, "replayed_request_id": replayed_id, "pending_count": pending.size()}))
 	report.close()
-	get_tree().quit(0 if snapshot.state_version >= int(data.get("expected_version", 0)) else 4)
+	get_tree().quit(0 if snapshot.state_version >= int(data.get("expected_version", 0)) and connection_state == "connected" and pending.is_empty() else 4)

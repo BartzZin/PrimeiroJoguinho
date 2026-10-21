@@ -15,7 +15,11 @@
 - Scripts manuais de instalação, início, parada, convites, jogo local, exportação e backup/restauração.
 - Migração Alembic 001 aplicada num banco PostgreSQL vazio; configuração Caddy validada em container temporário.
 - Backup Fernet criado e restaurado em `arcano_restore`: 22 partidas recuperadas sem modificar o banco principal.
-- 41 testes aprovados, incluindo sockets reais e dois escritores concorrentes no PostgreSQL. Ruff aprovado.
+- 43 testes do servidor aprovados, incluindo captura segura de logs, sockets reais e dois escritores concorrentes no PostgreSQL. Ruff aprovado.
+- Correções de interação: mundo 3D explícito e consultas físicas no processamento de física; regressões por cliques nos dois lados, com rotação de câmera e redimensionamento.
+- Indicador de conexão separado das ações, confirmação pelo primeiro snapshot, prazo de 10 segundos e três reconexões automáticas; reenvio mantém o identificador do comando.
+- Engrenagem no rodapé com logs detalhados como primeiro checkbox; preferências locais separadas das sessões, qualidade, animações, visão superior e tela cheia.
+- Logs estruturados do cliente com captura de erros de scripts, rotação, proteção de dados e escrita concorrente; inicializador e servidor também possuem registros operacionais.
 
 ## Medição local
 

@@ -18,6 +18,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--visible", action="store_true")
     parser.add_argument("--executable", type=Path)
+    parser.add_argument("--show-settings", action="store_true")
+    parser.add_argument("--reconnect", action="store_true")
     args = parser.parse_args()
     runtime = ROOT / ".runtime"
     runtime.mkdir(exist_ok=True)
@@ -48,10 +50,12 @@ def main():
             "server": base,
             "session": sessions[side],
             "match_id": match_id,
-            "expected_version": 1,
+            "expected_version": 2,
+            "wait_for_version": 0 if side == "white" else 1,
+            "show_settings": args.show_settings,
+            "reconnect": args.reconnect,
+            "move": "e2e4" if side == "white" else "e7e5",
         }
-        if side == "white":
-            data["move"] = "e2e4"
         path = runtime / f"smoke-{side}.json"
         path.write_text(json.dumps(data), encoding="utf-8")
         command = [str(executable)]
@@ -72,13 +76,18 @@ def main():
         path.unlink(missing_ok=True)  # remove short-lived session credentials, keep screenshots
         print(side, result.returncode, result.stdout, result.stderr)
         report = json.loads(Path(str(path) + ".result.json").read_text(encoding="utf-8"))
-        assert result.returncode == 0 and int(report["state_version"]) >= 1
+        assert result.returncode == 0 and int(report["state_version"]) >= 2
+        assert report["connection_state"] == "connected"
+        assert report["pending_count"] == 0
+        if args.reconnect:
+            assert report["replayed_request_id"]
         assert "SCRIPT ERROR" not in result.stderr and "ERROR:" not in result.stderr
 
     with ThreadPoolExecutor(2) as executor:
         list(executor.map(run, ("white", "black")))
     view = client.get(f"/v1/matches/{match_id}", headers=black_header).json()
     assert any(p["square"] == "e4" and p["kind"] == "p" for p in view["pieces"])
+    assert view["state_version"] == 2, "Reconnect must not apply a command twice"
     print("Two Godot clients synchronized successfully.")
 
 

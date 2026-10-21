@@ -81,7 +81,7 @@ receipts = Table(
 
 
 def database(url):
-    options = {"pool_pre_ping": True}
+    options = {"pool_pre_ping": True, "hide_parameters": True}
     if url == "sqlite://":
         options.update(poolclass=StaticPool, connect_args={"check_same_thread": False})
     return create_engine(url, **options)

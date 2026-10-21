@@ -20,6 +20,11 @@ services:
     build:
       context: ../server
     restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "5"
     environment:
       DATABASE_URL: postgresql+psycopg://arcano:${POSTGRES_PASSWORD}@db:5432/arcano
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Configure ADMIN_TOKEN em .env}

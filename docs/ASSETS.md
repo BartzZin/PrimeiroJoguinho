@@ -7,6 +7,7 @@
 - As configurações `.glb.import` usam `gltf/embedded_image_handling=2`: [texturas embutidas em Basis Universal](https://docs.godotengine.org/en/4.6/classes/class_gltfstate.html#enum-gltfstate-handlebinaryimagemode), compactadas para memória gráfica. Isso evita cópias extraídas ao lado dos GLBs; os arquivos de origem permanecem intactos.
 - Miniaturas procedurais anteriores: gerador preservado em `tools/generate_models.py`, agora com saída em `.runtime/prototype-models`, fora dos recursos do jogo.
 - Doze símbolos de cartas `.svg`: desenhos vetoriais originais de `tools/generate_card_icons.py`.
+- Engrenagem de configurações: desenho vetorial original em `client-godot/assets/ui/gear.svg`.
 - Moldura do tabuleiro: geometria original com bordas arredondadas e incrustações de latão, gerada por `tools/generate_board.py` em `client-godot/assets/board/frame.glb` com Blender 4.5.3 LTS.
 - Casas do tabuleiro: geometria interativa Godot com acabamento procedural de pedra em `client-godot/assets/board/stone.gdshader`. Materiais, interface e efeitos: código do projeto.
 - `Xadrez mágico em estilo anime.png`: referência fornecida pelo proprietário; não incorporada ao executável.

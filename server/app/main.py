@@ -12,11 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
 
+from .diagnostics import event, failure, get_logger
 from .domain.game import CARDS, RuleError
 from .service import TUTORIALS, Service
 from .storage import database
 
-logger = logging.getLogger("arcano")
+logger = get_logger()
 
 
 class Settings(BaseSettings):
@@ -67,7 +68,8 @@ def create_app(engine=None, settings=None):
             try:
                 view = await asyncio.to_thread(service.view, account_id, match_id)
                 await asyncio.wait_for(socket.send_json(view), 2)
-            except Exception:
+            except Exception as exc:
+                failure(logger, "broadcast_failed", exc, match_id=match_id)
                 connections[match_id].pop(socket, None)
 
     async def clock_loop():
@@ -77,18 +79,20 @@ def create_app(engine=None, settings=None):
                 for match_id in set(changed) | set(connections):
                     if connections[match_id]:
                         await broadcast(match_id)
-            except Exception:
-                logger.exception("clock_loop_failed")
+            except Exception as exc:
+                failure(logger, "clock_loop_failed", exc)
             await asyncio.sleep(1)
 
     @asynccontextmanager
     async def lifespan(app):
         await asyncio.to_thread(service.void_after_restart)
+        event(logger, "server_started")
         task = asyncio.create_task(clock_loop())
         yield
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        event(logger, "server_stopped")
 
     app = FastAPI(title="Xadrez Arcano", version="0.1.0", lifespan=lifespan)
     app.state.service = service
@@ -107,7 +111,20 @@ def create_app(engine=None, settings=None):
             rate_limit("http:" + (request.client.host if request.client else "unknown"), 240)
         except HTTPException:
             return JSONResponse({"code": "RATE_LIMITED"}, status_code=429)
-        return await call_next(request)
+        started = time.monotonic()
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            route = getattr(request.scope.get("route"), "path", "unknown")
+            failure(logger, "http_exception", exc, route=route, method=request.method)
+            return JSONResponse({"code": "INTERNAL_ERROR"}, status_code=500)
+        route = getattr(request.scope.get("route"), "path", "unknown")
+        if not route.startswith("/health/"):
+            event(
+                logger, "http_completed", route=route, method=request.method,
+                status=response.status_code, duration_ms=round((time.monotonic() - started) * 1000),
+            )
+        return response
 
     def actor(authorization: str = Header(default="")):
         if not authorization.startswith("Bearer "):
@@ -203,13 +220,15 @@ def create_app(engine=None, settings=None):
         try:
             account_id = await asyncio.to_thread(service.authenticate, token)
             view = await asyncio.to_thread(service.view, account_id, match_id)
-        except RuleError:
+        except RuleError as exc:
+            event(logger, "socket_rejected", level=logging.WARNING, match_id=match_id, code=str(exc))
             await socket.close(code=1008)
             return
         await socket.accept()
+        event(logger, "socket_connected", match_id=match_id)
         connections[match_id][socket] = account_id
-        await socket.send_json(view)
         try:
+            await socket.send_json(view)
             while True:
                 raw = await socket.receive_text()
                 rate_limit("ws:" + account_id, 120)
@@ -232,14 +251,25 @@ def create_app(engine=None, settings=None):
                     response = await asyncio.to_thread(
                         service.command, account_id, match_id, command.model_dump()
                     )
+                    event(
+                        logger, response["type"], match_id=match_id,
+                        request_id=command.request_id, kind=command.type,
+                        code=response.get("code", "OK"),
+                    )
                     await socket.send_json(response)
                     await broadcast(match_id)
                 except (ValueError, TypeError, KeyError) as exc:
                     code = str(exc) if isinstance(exc, RuleError) else "INVALID_PAYLOAD"
+                    event(logger, "command.rejected", level=logging.WARNING, match_id=match_id, code=code)
                     await socket.send_json({"type": "command.rejected", "code": code})
-        except (WebSocketDisconnect, RuleError, HTTPException):
+        except (WebSocketDisconnect, RuleError, HTTPException) as exc:
+            event(logger, "socket_closed", match_id=match_id, reason=type(exc).__name__)
             with suppress(Exception):
                 await socket.close(code=1008)
+        except Exception as exc:
+            failure(logger, "socket_exception", exc, match_id=match_id)
+            with suppress(Exception):
+                await socket.close(code=1011)
         finally:
             connections[match_id].pop(socket, None)
 

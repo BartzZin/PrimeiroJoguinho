@@ -38,9 +38,21 @@ Para apenas iniciar o backend: `./tools/Start-Dev.ps1`. Para abrir um cliente: `
 - Clique numa carta, escolha o alvo no tabuleiro e confirme **Conjurar**. Cartas pessoais usam alvo automático. Dissipação exige escolher qual efeito remover.
 - Faça o movimento depois da carta. Existe uma única conjuração por turno.
 - Botão direito arrastado gira a câmera; roda do mouse aproxima; há opção de visão superior.
-- A qualidade alta usa o renderizador Forward+, suavização 4×, sombras e oclusão ambiente. Em **Apresentação**, as opções Médio e Baixo reduzem esses efeitos.
+- A qualidade alta usa o renderizador Forward+, suavização 4×, sombras e oclusão ambiente. Na **engrenagem do canto inferior direito**, as opções Médio e Baixo reduzem esses efeitos. O mesmo menu reúne animações, visão superior e tela cheia.
 - O tutorial ensina movimento, defesa e armadilha usando cenários do servidor.
 - O relógio continua durante animações, escolhas e desconexões individuais. Falha/reinício do servidor anula partidas em andamento.
+
+## Diagnóstico de problemas
+
+O rodapé mostra **Conectando**, **Conectado**, **Reconectando** ou **Falha na conexão**, separado das mensagens das ações. A conexão só é confirmada depois de receber o estado da partida. Cada tentativa aguarda até 10 segundos; há três novas tentativas automáticas, com intervalos de 2, 4 e 8 segundos. Depois disso, confira o servidor e use **Reconectar partida**.
+
+Abra a **engrenagem**, marque **Ativar logs detalhados** e reproduza o problema. **Abrir pasta de logs** mostra os arquivos dessa janela. Com o checkbox desligado, os erros essenciais continuam sendo registrados. As preferências são salvas por perfil, separadamente das credenciais.
+
+- Cliente: `%APPDATA%\Godot\app_userdata\Xadrez Arcano\logs\<perfil>\`. JSONL por execução, com arquivos de até 2 MB, preservando os cinco arquivos fechados mais recentes e os arquivos em uso.
+- Inicialização e console do Godot: `.runtime/logs/`. Em caso de falha, o iniciador informa o arquivo para consulta. Dados temporários de autenticação usam nomes exclusivos e são removidos assim que o jogo os lê.
+- Servidor: logs operacionais em `docker compose --env-file .env -f ops/compose.yaml logs api`, com rotação configurada no Docker. O checkbox não altera o nível de registro do servidor.
+
+Os registros não incluem tokens, convites, códigos de sala, senhas, mãos, armadilhas ou payloads completos. Nenhum log é enviado automaticamente. Falhas ao gravar não interrompem o jogo.
 
 ## Verificação, backup e build
 
@@ -48,11 +60,16 @@ Para apenas iniciar o backend: `./tools/Start-Dev.ps1`. Para abrir um cliente: `
 ./.venv/Scripts/python.exe -m pytest server/tests -q
 ./.venv/Scripts/python.exe -m ruff check server tools
 ./.venv/Scripts/python.exe tools/smoke_clients.py --visible
+./.venv/Scripts/python.exe tools/smoke_clients.py --visible --reconnect
+./.venv/Scripts/python.exe tools/test_client_network.py
+./Jogar.cmd -SmokeTest
 ./tools/Backup.ps1
 ./tools/Export-Windows.ps1
 ```
 
 O teste de concorrência PostgreSQL usa `TEST_DATABASE_URL`, apontado para um banco isolado; CI já o configura. O executável exportado fica em `exports/windows/XadrezArcano.exe` e precisa do servidor ativo. A build não inclui servidor offline.
+
+As regressões Godot estão em `client-godot/tests/`: seleção por eventos reais de mouse, configurações, rotação dos logs e estados de conexão. O teste de diagnóstico provoca um erro de script e uma pasta inacessível de propósito para verificar sua captura; essas mensagens são esperadas somente nesse teste.
 
 Backups são cifrados com `BACKUP_KEY` de `.env`. Guarde essa chave separadamente: sem ela o backup não pode ser aberto. Restauração segura: `./tools/Restore-Backup.ps1 -File backups/arquivo.fernet`, sempre num banco novo `arcano_restore...`.
 

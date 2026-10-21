@@ -6,12 +6,16 @@ var failures = 0
 
 class PreviewGame:
 	extends "res://main.gd"
+	var received_commands = []
 
 	func _ready():
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		build_ui()
 		build_stage()
 		set_process(false)
+
+	func send_command(kind, payload):
+		received_commands.append({"kind": kind, "payload": payload})
 
 
 func _initialize():
@@ -53,6 +57,7 @@ func run():
 		"my_mana": 3, "opponent_mana": 3, "opponent_hand_count": 3, "my_deck_count": 9,
 		"tutorial": null, "draw_offer": null,
 	}
+	game.set_connection_state("connected")
 	for side in ["white", "black"]:
 		var back_rank = "1" if side == "white" else "8"
 		var pawn_rank = "2" if side == "white" else "7"
@@ -74,8 +79,28 @@ func run():
 	check(red.get_child(0).scene_file_path.contains("/red/"), "Lunar must use the red army")
 	check(blue.basis.z.dot(red.basis.z) < 0, "Armies must face each other")
 	# Exercise the same selection/highlighting path used by the mouse.
-	game.click_square("e2")
+	await process_frame
+	await physics_frame
+	await game._smoke_click_square("e2")
 	check(game.selected_square == "e2", "Model replacement must preserve square selection")
+	await game._smoke_click_square("e4")
+	check(game.received_commands.size() == 1 and game.received_commands[0].payload == {"from": "e2", "to": "e4"}, "Mouse selection must produce the actual move command")
+	game.snapshot.viewer_side = "black"
+	game.snapshot.legal_moves = ["e7e5"]
+	game.camera_yaw = 0.3
+	game.camera_pitch = 1.0
+	game.camera_distance = 12
+	game.position_camera()
+	game.clear_selection()
+	await game._smoke_click_square("e7")
+	check(game.selected_square == "e7", "Black camera must select the correct square")
+	await game._smoke_click_square("e5")
+	check(game.received_commands.size() == 2 and game.received_commands[1].payload == {"from": "e7", "to": "e5"}, "Black mouse selection must send e7e5")
+	game.snapshot.viewer_side = "white"
+	game.camera_yaw = 0
+	game.camera_pitch = 0.85
+	game.camera_distance = 11.5
+	game.position_camera()
 	game.clear_selection()
 	if DisplayServer.get_name() != "headless":
 		await create_timer(1).timeout

@@ -38,4 +38,10 @@ jobs:
           unzip Godot_v4.7.2-stable_linux.x86_64.zip
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --editor --import --quit
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/models.gd
+      - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/diagnostics.gd
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r server/requirements.lock
+      - run: python tools/test_client_network.py --godot ./Godot_v4.7.2-stable_linux.x86_64
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --quit-after 120
