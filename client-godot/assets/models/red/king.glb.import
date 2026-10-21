@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://i0epe8bf7lbj"
-path="res://.godot/imported/bishop.glb-d463b7a23ff33f08a47fdec5838ddb1c.scn"
+uid="uid://b7waytq5iuw85"
+path="res://.godot/imported/king.glb-344f09bc3c8954e1574e16903a699e16.scn"
 
 [deps]
 
-source_file="res://assets/models/bishop.glb"
-dest_files=["res://.godot/imported/bishop.glb-d463b7a23ff33f08a47fdec5838ddb1c.scn"]
+source_file="res://assets/models/red/king.glb"
+dest_files=["res://.godot/imported/king.glb-344f09bc3c8954e1574e16903a699e16.scn"]
 
 [params]
 
@@ -41,5 +41,5 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={}
 gltf/naming_version=2
-gltf/embedded_image_handling=1
+gltf/embedded_image_handling=2
 gltf/texture_map_mode=1

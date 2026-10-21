@@ -1,7 +1,9 @@
 extends Control
 
 const NAMES = {"p": "Peão", "r": "Torre", "n": "Cavalo", "b": "Bispo", "q": "Dama", "k": "Rei"}
-const MODEL_NAMES = {"p": "pawn", "r": "rook", "n": "knight", "b": "bishop", "q": "queen", "k": "king"}
+const PIECE_MODELS = preload("res://piece_models.gd")
+const BOARD_FRAME = preload("res://assets/board/frame.glb")
+const STONE_SHADER = preload("res://assets/board/stone.gdshader")
 const EFFECT_NAMES = {"shield": "escudo", "frozen": "imobilização", "ward": "proteção rúnica", "silence": "silêncio"}
 var server_field: LineEdit
 var invite_field: LineEdit
@@ -40,9 +42,10 @@ var top_view = false
 var animate_moves = true
 var camera_yaw = 0.0
 var camera_pitch = 0.85
-var camera_distance = 12.0
+var camera_distance = 11.5
 var connected_match_id = ""
 var directional_light: DirectionalLight3D
+var stage_environment: Environment
 
 
 func _ready():
@@ -79,7 +82,7 @@ func _ready():
 				connect_match()
 
 
-func label(text_value, parent, size_value = 17):
+func label(text_value, parent, size_value = 20):
 	var control = Label.new()
 	control.text = text_value
 	control.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -91,7 +94,8 @@ func label(text_value, parent, size_value = 17):
 func button(text_value, parent, action):
 	var control = Button.new()
 	control.text = text_value
-	control.custom_minimum_size.y = 38
+	control.custom_minimum_size.y = 44
+	control.add_theme_font_size_override("font_size", 19)
 	control.pressed.connect(action)
 	parent.add_child(control)
 	return control
@@ -101,12 +105,14 @@ func field(placeholder, parent, initial = ""):
 	var control = LineEdit.new()
 	control.placeholder_text = placeholder
 	control.text = initial
-	control.custom_minimum_size.y = 38
+	control.custom_minimum_size.y = 44
+	control.add_theme_font_size_override("font_size", 19)
 	parent.add_child(control)
 	return control
 
 
 func build_ui():
+	apply_ui_theme()
 	var background = ColorRect.new()
 	background.color = Color("0a1121")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -114,7 +120,7 @@ func build_ui():
 	var margin = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for edge in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + edge, 14)
+		margin.add_theme_constant_override("margin_" + edge, 20)
 	add_child(margin)
 	var layout = HBoxContainer.new()
 	layout.add_theme_constant_override("separation", 16)
@@ -123,7 +129,7 @@ func build_ui():
 	main_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	layout.add_child(main_column)
 	label("XADREZ ARCANO   /   ALPHA", main_column, 26)
-	clocks_label = label("SOLAR  10:00     •     LUNAR  10:00", main_column, 23)
+	clocks_label = label("SOLAR · AZUL  10:00     •     LUNAR · VERMELHO  10:00", main_column, 23)
 	stage = SubViewportContainer.new()
 	stage.stretch = true
 	stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -133,6 +139,7 @@ func build_ui():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(900, 650)
 	viewport.own_world_3d = true
+	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	stage.add_child(viewport)
 	info_label = label("Entre com um convite para criar uma sala ou iniciar o tutorial.", main_column)
@@ -141,10 +148,10 @@ func build_ui():
 	main_column.add_child(cards_row)
 	status_label = label("Pronto. O servidor confirma todas as ações.", main_column, 15)
 	var scroll = ScrollContainer.new()
-	scroll.custom_minimum_size.x = 320
+	scroll.custom_minimum_size.x = 350
 	layout.add_child(scroll)
 	var sidebar = VBoxContainer.new()
-	sidebar.custom_minimum_size.x = 300
+	sidebar.custom_minimum_size.x = 330
 	sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(sidebar)
 	label("CONEXÃO", sidebar, 20)
@@ -175,6 +182,7 @@ func build_ui():
 	button("Recusar empate", sidebar, send_command.bind("draw.respond", {"accept": false}))
 	button("Desistir…", sidebar, confirm_resign)
 	label("APRESENTAÇÃO", sidebar, 20)
+	button("Tela cheia / janela (F11)", sidebar, toggle_fullscreen)
 	button("Alternar câmera superior", sidebar, func(): top_view = not top_view; position_camera())
 	var animations = CheckButton.new()
 	animations.text = "Animações de movimento"
@@ -182,9 +190,10 @@ func build_ui():
 	animations.toggled.connect(func(value): animate_moves = value)
 	sidebar.add_child(animations)
 	var quality = OptionButton.new()
-	for option in ["Baixo • sem sombras", "Médio", "Alto • suavização"]:
+	for option in ["Baixo • sem sombras", "Médio • suavização 2×", "Alto • suavização 4×"]:
 		quality.add_item(option)
-	quality.item_selected.connect(func(index): viewport.msaa_3d = Viewport.MSAA_2X if index == 2 else Viewport.MSAA_DISABLED; directional_light.shadow_enabled = index > 0)
+	quality.select(2)
+	quality.item_selected.connect(set_graphics_quality)
 	sidebar.add_child(quality)
 	label("HISTÓRICO", sidebar, 20)
 	button("Minhas partidas", sidebar, load_matches)
@@ -199,40 +208,90 @@ func build_ui():
 	label("Alpha: sem repetição e regras de 50/75 lances. Empate material apenas rei contra rei.", sidebar, 14)
 
 
-func material(color_value):
+func apply_ui_theme():
+	theme = Theme.new()
+	theme.default_font_size = 20
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		var style = StyleBoxFlat.new()
+		style.bg_color = Color({"normal": "142137", "hover": "233854", "pressed": "304564", "disabled": "101a2b"}[state])
+		style.border_color = Color("344861")
+		style.set_border_width_all(1)
+		style.set_corner_radius_all(7)
+		style.content_margin_left = 12
+		style.content_margin_right = 12
+		style.content_margin_top = 8
+		style.content_margin_bottom = 8
+		theme.set_stylebox(state, "Button", style)
+		if state == "normal":
+			theme.set_stylebox(state, "LineEdit", style.duplicate())
+	theme.set_color("font_color", "Button", Color("e1eaf5"))
+	theme.set_color("font_disabled_color", "Button", Color("7789a3"))
+	theme.set_color("font_color", "LineEdit", Color("e1eaf5"))
+	var focus = StyleBoxFlat.new()
+	focus.bg_color = Color(0, 0, 0, 0)
+	focus.border_color = Color("c4a76d")
+	focus.set_border_width_all(2)
+	focus.set_corner_radius_all(7)
+	theme.set_stylebox("focus", "Button", focus)
+	theme.set_stylebox("focus", "LineEdit", focus)
+
+
+func material(color_value, metal = 0.0, roughness = 0.65):
 	var result = StandardMaterial3D.new()
 	result.albedo_color = color_value
-	result.roughness = 0.46
-	result.metallic = 0.24
+	result.roughness = roughness
+	result.metallic = metal
 	return result
 
 
 func build_stage():
 	var world = WorldEnvironment.new()
 	world.environment = Environment.new()
+	stage_environment = world.environment
 	world.environment.background_mode = Environment.BG_COLOR
-	world.environment.background_color = Color("101c31")
+	world.environment.background_color = Color("101929")
 	world.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	world.environment.ambient_light_color = Color("c6d9f0")
-	world.environment.ambient_light_energy = 0.7
+	world.environment.ambient_light_color = Color("d8e3f2")
+	world.environment.ambient_light_energy = 0.45
+	# Metallic armor needs an environment to reflect. A color background alone
+	# leaves these PBR materials black, even with strong direct illumination.
+	var sky_material = ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color("7388a5")
+	sky_material.sky_horizon_color = Color("d6dfeb")
+	sky_material.ground_horizon_color = Color("b5becd")
+	sky_material.ground_bottom_color = Color("414f65")
+	sky_material.sky_energy_multiplier = 0.5
+	sky_material.ground_energy_multiplier = 0.35
+	world.environment.sky = Sky.new()
+	world.environment.sky.sky_material = sky_material
+	world.environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	world.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	world.environment.ssao_enabled = true
+	world.environment.ssao_radius = 0.2
+	world.environment.ssao_intensity = 1.5
 	viewport.add_child(world)
 	var light = DirectionalLight3D.new()
 	directional_light = light
 	light.rotation_degrees = Vector3(-60, -25, 0)
-	light.light_energy = 1.25
+	light.light_energy = 0.75
+	light.light_color = Color("fff1d8")
+	light.shadow_enabled = true
+	light.directional_shadow_max_distance = 30
+	light.shadow_bias = 0.025
 	viewport.add_child(light)
+	var fill = DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-40, 155, 0)
+	fill.light_color = Color("c5dbff")
+	fill.light_energy = 0.35
+	viewport.add_child(fill)
 	camera = Camera3D.new()
-	camera.fov = 48
+	camera.fov = 40
 	viewport.add_child(camera)
 	position_camera()
 	board_root = Node3D.new()
 	viewport.add_child(board_root)
-	var foundation = MeshInstance3D.new()
-	foundation.mesh = BoxMesh.new()
-	foundation.mesh.size = Vector3(8.28, 0.24, 8.28)
-	foundation.position.y = -0.2
-	foundation.material_override = material(Color("9b7945"))
-	viewport.add_child(foundation)
+	viewport.add_child(BOARD_FRAME.instantiate())
+	add_box(Vector3(200, 0.1, 200), Vector3(0, -0.55, 0), material(Color("080e19"), 0.0, 0.9))
 	for rank in range(8):
 		for file in range(8):
 			var name_value = "abcdefgh"[file] + str(rank + 1)
@@ -241,8 +300,8 @@ func build_stage():
 			body.position = world_square(name_value)
 			var mesh = MeshInstance3D.new()
 			mesh.mesh = BoxMesh.new()
-			mesh.mesh.size = Vector3(0.98, 0.18, 0.98)
-			mesh.material_override = material(Color("d9d1ba") if (file + rank) % 2 else Color("34445b"))
+			mesh.mesh.size = Vector3(0.995, 0.18, 0.995)
+			mesh.material_override = tile_material(Color("a8b5bc") if (file + rank) % 2 else Color("23354a"))
 			body.add_child(mesh)
 			var collision = CollisionShape3D.new()
 			collision.shape = BoxShape3D.new()
@@ -251,13 +310,58 @@ func build_stage():
 			board_root.add_child(body)
 	pieces_root = Node3D.new()
 	viewport.add_child(pieces_root)
-	for file in range(8):
-		var coordinate = Label3D.new()
-		coordinate.text = "abcdefgh"[file]
-		coordinate.position = Vector3(file - 3.5, 0, 4.25)
-		coordinate.rotation_degrees.x = -90
-		coordinate.font_size = 55
-		viewport.add_child(coordinate)
+	for index in range(8):
+		for edge in [-1, 1]:
+			add_coordinate("abcdefgh"[index], Vector3(index - 3.5, 0.025, edge * 4.15), 0 if edge == 1 else PI)
+			add_coordinate(str(index + 1), Vector3(edge * 4.15, 0.025, 3.5 - index), PI / 2 if edge == -1 else -PI / 2)
+
+
+func add_box(size_value, position_value, paint):
+	var mesh = MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	mesh.mesh.size = size_value
+	mesh.position = position_value
+	mesh.material_override = paint
+	viewport.add_child(mesh)
+
+
+func tile_material(color_value, highlighted = false):
+	var result = ShaderMaterial.new()
+	result.shader = STONE_SHADER
+	result.set_shader_parameter("stone_color", color_value)
+	result.set_shader_parameter("highlight", 1.0 if highlighted else 0.0)
+	return result
+
+
+func set_graphics_quality(index):
+	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][index]
+	directional_light.shadow_enabled = index > 0
+	stage_environment.ssao_enabled = index == 2
+
+
+func add_coordinate(text_value, position_value, yaw):
+	var coordinate = Label3D.new()
+	coordinate.text = text_value
+	coordinate.position = position_value
+	coordinate.rotation = Vector3(-PI / 2, yaw, 0)
+	coordinate.font_size = 52
+	coordinate.pixel_size = 0.004
+	coordinate.modulate = Color("ead6a8")
+	coordinate.outline_size = 4
+	viewport.add_child(coordinate)
+
+
+func toggle_fullscreen():
+	var mode = DisplayServer.window_get_mode()
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED if mode in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN] else DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+func _unhandled_key_input(event):
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F11:
+			toggle_fullscreen()
+		elif event.keycode == KEY_ESCAPE and DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]:
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
 
 
 func position_camera():
@@ -266,7 +370,7 @@ func position_camera():
 		camera.position = Vector3(0, 13, 0.01 * reverse)
 	else:
 		camera.position = Vector3(sin(camera_yaw) * cos(camera_pitch), sin(camera_pitch), cos(camera_yaw) * cos(camera_pitch) * reverse) * camera_distance
-	camera.look_at(Vector3.ZERO)
+	camera.look_at(Vector3.ZERO if top_view else Vector3(0, 0, 0.65 * reverse))
 
 
 func world_square(value):
@@ -425,7 +529,7 @@ func handle_message(data):
 	if data.type == "match.snapshot":
 		snapshot = data
 		var clocks = data.clock_ms
-		clocks_label.text = "SOLAR  %s     •     LUNAR  %s" % [clock_text(clocks.white), clock_text(clocks.black)]
+		clocks_label.text = "SOLAR · AZUL  %s     •     LUNAR · VERMELHO  %s" % [clock_text(clocks.white), clock_text(clocks.black)]
 		if data.state_version != rendered_version:
 			rendered_version = data.state_version
 			render_snapshot()
@@ -467,22 +571,9 @@ func render_snapshot():
 	for piece in snapshot.pieces:
 		var root = Node3D.new()
 		root.name = piece.id
-		var destination = world_square(piece.square) + Vector3(0, 0.12, 0)
+		var destination = world_square(piece.square) + Vector3(0, 0.095, 0)
 		root.position = previous.get(piece.id, destination) if animate_moves else destination
-		var model_path = "res://assets/models/" + MODEL_NAMES[piece.kind] + ".glb"
-		if ResourceLoader.exists(model_path):
-			var model = load(model_path).instantiate()
-			root.add_child(model)
-			paint_model(model, material(Color("dce9f5") if piece.side == "white" else Color("b94f65")))
-		else:
-			var fallback = MeshInstance3D.new()
-			fallback.mesh = CylinderMesh.new()
-			fallback.mesh.top_radius = 0.2
-			fallback.mesh.bottom_radius = 0.3
-			fallback.mesh.height = 0.65
-			fallback.position.y = 0.35
-			fallback.material_override = material(Color("dce9f5") if piece.side == "white" else Color("b94f65"))
-			root.add_child(fallback)
+		root.add_child(PIECE_MODELS.create(piece.kind, piece.side))
 		pieces_root.add_child(root)
 		for effect in snapshot.public_effects:
 			if effect.get("piece_id") == piece.id:
@@ -534,13 +625,6 @@ func render_snapshot():
 	clear_selection()
 
 
-func paint_model(node, paint):
-	if node is MeshInstance3D:
-		node.material_override = paint
-	for child in node.get_children():
-		paint_model(child, paint)
-
-
 func clear_selection():
 	selected_square = ""
 	selected_card = {}
@@ -556,7 +640,7 @@ func update_tiles():
 		var pos = tile.get_meta("square")
 		var file = "abcdefgh".find(pos[0])
 		var rank = int(pos[1]) - 1
-		var color_value = Color("d9d1ba") if (file + rank) % 2 else Color("34445b")
+		var color_value = Color("a8b5bc") if (file + rank) % 2 else Color("23354a")
 		for trap in snapshot.get("my_traps", []):
 			if trap.square == pos:
 				color_value = Color("257e78")
@@ -568,7 +652,7 @@ func update_tiles():
 				color_value = Color("4a936b")
 		if pos == selected_square:
 			color_value = Color("d3aa45")
-		tile.get_child(0).material_override = material(color_value)
+		tile.get_child(0).material_override = tile_material(color_value, pos == selected_square)
 
 
 func board_input(event):
@@ -579,7 +663,7 @@ func board_input(event):
 	if not event is InputEventMouseButton or not event.pressed:
 		return
 	if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		camera_distance = clamp(camera_distance + (-0.5 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.5), 9, 17)
+		camera_distance = clamp(camera_distance + (-0.5 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.5), 8, 17)
 		position_camera()
 		return
 	if event.button_index != MOUSE_BUTTON_LEFT or snapshot.is_empty():

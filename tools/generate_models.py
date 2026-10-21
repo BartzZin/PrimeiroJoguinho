@@ -1,11 +1,11 @@
-"""Original procedural miniatures. Run with the portable Blender, no external assets."""
+"""Legacy procedural prototypes; the game now uses the supplied textured GLBs."""
 
 import math
 from pathlib import Path
 
 import bpy
 
-DESTINATION = Path(__file__).resolve().parents[1] / "client-godot/assets/models"
+DESTINATION = Path(__file__).resolve().parents[1] / ".runtime/prototype-models"
 DESTINATION.mkdir(parents=True, exist_ok=True)
 
 

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bm2fq8qoyxud7"
-path="res://.godot/imported/pawn.glb-65166b463e5de0e20d5d5065fe526f37.scn"
+uid="uid://cej0cfyj1h81q"
+path="res://.godot/imported/queen.glb-b57fd1d805161214077dc2a6155570af.scn"
 
 [deps]
 
-source_file="res://assets/models/pawn.glb"
-dest_files=["res://.godot/imported/pawn.glb-65166b463e5de0e20d5d5065fe526f37.scn"]
+source_file="res://assets/models/blue/queen.glb"
+dest_files=["res://.godot/imported/queen.glb-b57fd1d805161214077dc2a6155570af.scn"]
 
 [params]
 
@@ -41,5 +41,5 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={}
 gltf/naming_version=2
-gltf/embedded_image_handling=1
+gltf/embedded_image_handling=2
 gltf/texture_map_mode=1

@@ -37,4 +37,5 @@ jobs:
           grep 'Godot_v4.7.2-stable_linux.x86_64.zip$' SHA512-SUMS.txt | sha512sum -c -
           unzip Godot_v4.7.2-stable_linux.x86_64.zip
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --editor --import --quit
+      - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/models.gd
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --quit-after 120

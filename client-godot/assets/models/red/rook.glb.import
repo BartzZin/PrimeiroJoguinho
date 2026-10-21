@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://n0tv33n25u5s"
-path="res://.godot/imported/rook.glb-60830f87db527cc224aa6ebe8ff31c83.scn"
+uid="uid://bqdp27h0yowar"
+path="res://.godot/imported/rook.glb-a7039c1ff016061a25516b5a0457aad7.scn"
 
 [deps]
 
-source_file="res://assets/models/rook.glb"
-dest_files=["res://.godot/imported/rook.glb-60830f87db527cc224aa6ebe8ff31c83.scn"]
+source_file="res://assets/models/red/rook.glb"
+dest_files=["res://.godot/imported/rook.glb-a7039c1ff016061a25516b5a0457aad7.scn"]
 
 [params]
 
@@ -41,5 +41,5 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={}
 gltf/naming_version=2
-gltf/embedded_image_handling=1
+gltf/embedded_image_handling=2
 gltf/texture_map_mode=1

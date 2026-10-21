@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bkwo0j2wwh2xj"
-path="res://.godot/imported/knight.glb-3575ea5bc2aefe6ac916d8cbd56e5c76.scn"
+uid="uid://btrgavfl8efo1"
+path="res://.godot/imported/king.glb-a2a0399904396a329ef6a10c0773710b.scn"
 
 [deps]
 
-source_file="res://assets/models/knight.glb"
-dest_files=["res://.godot/imported/knight.glb-3575ea5bc2aefe6ac916d8cbd56e5c76.scn"]
+source_file="res://assets/models/blue/king.glb"
+dest_files=["res://.godot/imported/king.glb-a2a0399904396a329ef6a10c0773710b.scn"]
 
 [params]
 
@@ -41,5 +41,5 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={}
 gltf/naming_version=2
-gltf/embedded_image_handling=1
+gltf/embedded_image_handling=2
 gltf/texture_map_mode=1

@@ -1,6 +1,8 @@
 .tools/
 .venv/
 .runtime/
+/Models/*.rar
+/Models/*.zip
 .env
 .env.*
 !.env.example

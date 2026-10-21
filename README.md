@@ -32,10 +32,13 @@ Para apenas iniciar o backend: `./tools/Start-Dev.ps1`. Para abrir um cliente: `
 
 ## Jogar
 
+- As peças azuis são do lado Solar (brancas) e jogam primeiro; as vermelhas são do lado Lunar (pretas). São dois jogadores: cada janela controla um lado.
+- A apresentação usa base Full HD (1920×1080) e abre maximizada. **F11** alterna a tela cheia; **Esc** sai dela. O tabuleiro e as peças ocupam uma área maior da tela.
 - Clique em uma peça sua e depois numa casa destacada.
 - Clique numa carta, escolha o alvo no tabuleiro e confirme **Conjurar**. Cartas pessoais usam alvo automático. Dissipação exige escolher qual efeito remover.
 - Faça o movimento depois da carta. Existe uma única conjuração por turno.
 - Botão direito arrastado gira a câmera; roda do mouse aproxima; há opção de visão superior.
+- A qualidade alta usa o renderizador Forward+, suavização 4×, sombras e oclusão ambiente. Em **Apresentação**, as opções Médio e Baixo reduzem esses efeitos.
 - O tutorial ensina movimento, defesa e armadilha usando cenários do servidor.
 - O relógio continua durante animações, escolhas e desconexões individuais. Falha/reinício do servidor anula partidas em andamento.
 

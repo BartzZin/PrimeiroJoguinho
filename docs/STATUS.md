@@ -1,4 +1,4 @@
-# Status verificável — 19/10/2026
+# Status verificável — 20/10/2026
 
 ## Implementado e verificado localmente
 
@@ -8,7 +8,9 @@
 - Doze cartas, recursos, durações, armadilhas ocultas e resultado considerando defesa mágica.
 - Contas por convite, renovação de sessão, salas, WebSocket, projeções privadas, histórico, recibos e PostgreSQL transacional.
 - Reconexão individual; timeout automático; anulação idempotente após reinício.
-- Cliente Godot 3D com seis modelos originais, doze símbolos de cartas, alvos, promoção, efeitos, câmeras, configurações, empate, desistência e tutorial guiado.
+- Cliente Godot 3D com doze modelos texturizados fornecidos pelo proprietário (seis peças, exércitos azul e vermelho), doze símbolos de cartas, alvos, promoção, efeitos, câmeras, configurações, empate, desistência e tutorial guiado.
+- Apresentação Full HD, janela maximizada e atalho F11 para tela cheia; tabuleiro ampliado, moldura com bordas arredondadas, acabamento de pedra, renderizador Forward+, reflexos de ambiente, iluminação em dois sentidos, sombras, oclusão ambiente e suavização 4× no modo Alto.
+- Validação Godot dos 12 modelos, enquadramento das casas, 32 peças, escala, texturas, orientação, seleção, movimento, promoção, captura, efeitos e modos de qualidade; renderização local conferida na RTX 5060.
 - Executável Windows exportado e testado em duas instâncias simultâneas, sem depender do editor ou aceitar override de projeto.
 - Scripts manuais de instalação, início, parada, convites, jogo local, exportação e backup/restauração.
 - Migração Alembic 001 aplicada num banco PostgreSQL vazio; configuração Caddy validada em container temporário.
@@ -25,10 +27,10 @@
 - Versão de alpha para teste; balanceamento das cartas e playtests prolongados ainda são necessários.
 - Sem repetição/50/75 lances; empate material automático somente rei contra rei.
 - Tutorial usa três cenários e respostas predefinidas; não existe adversário IA nem modo offline.
-- Arte é estilizada simples e original; não reproduz o acabamento da imagem conceitual.
+- Modelos incorporados a partir de `Models/Xadrez_final.rar`; origem e mapeamento documentados em `docs/ASSETS.md`.
 - CI adicionada ao repositório; resultados remotos devem ser consultados em GitHub Actions após o envio.
 - Backup e monitoramento disponíveis manualmente; retenção externa e alertas operacionais aguardam hospedagem.
-- Ainda não há fontes `.blend`; modelos são reproduzíveis pelo gerador Python. Adotar Git LFS antes de incorporar `.blend`.
+- O pacote fornecido contém GLBs com texturas embutidas, sem fontes `.blend`. O gerador Python preserva somente os protótipos anteriores. Adotar Git LFS antes de incorporar `.blend`.
 
 Ferramentas não criam inicialização automática no Windows. Docker Desktop foi mantido com `AutoStart=false`; serviço Docker em modo Manual; containers locais usam `restart: no`.
 
