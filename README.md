@@ -38,6 +38,7 @@ Para apenas iniciar o backend: `./tools/Start-Dev.ps1`. Para abrir um cliente: `
 - Clique numa carta, escolha o alvo no tabuleiro e confirme **Conjurar**. Cartas pessoais usam alvo automático. Dissipação exige escolher qual efeito remover.
 - Faça o movimento depois da carta. Existe uma única conjuração por turno.
 - Botão direito arrastado gira a câmera; roda do mouse aproxima; há opção de visão superior.
+- O botão **☰**, ao lado da engrenagem no rodapé, mostra ou oculta toda a barra lateral (conexão, salas, tutorial, ações, histórico e catálogo). Ela começa oculta; sua escolha é salva por perfil. Ao recolher, o tabuleiro e as cartas ocupam o espaço liberado.
 - A qualidade alta usa o renderizador Forward+, suavização 4×, sombras e oclusão ambiente. Na **engrenagem do canto inferior direito**, as opções Médio e Baixo reduzem esses efeitos. O mesmo menu reúne animações, visão superior e tela cheia.
 - O tutorial ensina movimento, defesa e armadilha usando cenários do servidor.
 - O relógio continua durante animações, escolhas e desconexões individuais. Falha/reinício do servidor anula partidas em andamento.

@@ -45,6 +45,8 @@ var retry_at = 0
 var awaiting_refresh = false
 var connection_label: Label
 var gear_button: Button
+var sidebar_button: Button
+var sidebar_scroll: ScrollContainer
 var settings_menu: Control
 var diagnostics: Logger
 var preferences = PREFERENCES.new()
@@ -141,6 +143,7 @@ func set_status(text_value):
 
 
 func apply_preferences():
+	apply_sidebar_visibility(preferences.values.sidebar_visible)
 	animate_moves = preferences.values.animations
 	top_view = preferences.values.top_view
 	set_graphics_quality(preferences.values.quality)
@@ -151,7 +154,9 @@ func apply_preferences():
 
 func change_setting(key, value):
 	preferences.values[key] = value
-	if key == "detailed_logs":
+	if key == "sidebar_visible":
+		apply_sidebar_visibility(value)
+	elif key == "detailed_logs":
 		if diagnostics != null:
 			if not value:
 				log_event("INFO", "detailed_logging_disabled")
@@ -170,6 +175,22 @@ func change_setting(key, value):
 	if preferences.path != "" and preferences.save() != OK:
 		log_event("ERROR", "preferences_save_failed")
 	settings_menu.present(preferences.values)
+
+
+func apply_sidebar_visibility(value: bool):
+	queued_picks.clear()
+	sidebar_scroll.visible = value
+	sidebar_button.set_pressed_no_signal(value)
+	sidebar_button.tooltip_text = "Ocultar barra lateral" if value else "Mostrar barra lateral"
+	sidebar_button.accessibility_name = sidebar_button.tooltip_text
+	if value:
+		sidebar_scroll.set_deferred("scroll_vertical", sidebar_scroll.get_meta("saved_scroll", 0))
+
+
+func toggle_sidebar(value: bool):
+	if not value:
+		sidebar_scroll.set_meta("saved_scroll", sidebar_scroll.scroll_vertical)
+	change_setting("sidebar_visible", value)
 
 
 func open_logs_folder():
@@ -239,6 +260,7 @@ func build_ui():
 	stage.custom_minimum_size = Vector2(500, 340)
 	main_column.add_child(stage)
 	stage.gui_input.connect(board_input)
+	stage.resized.connect(func(): queued_picks.clear())
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(900, 650)
 	viewport.world_3d = World3D.new()
@@ -250,6 +272,8 @@ func build_ui():
 	cards_row.custom_minimum_size.y = 140
 	main_column.add_child(cards_row)
 	var scroll = ScrollContainer.new()
+	sidebar_scroll = scroll
+	scroll.visible = preferences.values.sidebar_visible
 	scroll.custom_minimum_size.x = 350
 	layout.add_child(scroll)
 	var sidebar = VBoxContainer.new()
@@ -304,6 +328,16 @@ func build_ui():
 	status_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sidebar_button = Button.new()
+	sidebar_button.name = "SidebarToggle"
+	sidebar_button.custom_minimum_size = Vector2(44, 44)
+	sidebar_button.toggle_mode = true
+	sidebar_button.icon = preload("res://assets/ui/menu.svg")
+	sidebar_button.expand_icon = true
+	sidebar_button.add_theme_constant_override("icon_max_width", 24)
+	sidebar_button.toggled.connect(toggle_sidebar)
+	footer.add_child(sidebar_button)
+	apply_sidebar_visibility(preferences.values.sidebar_visible)
 	gear_button = button("", footer, func(): settings_menu.toggle(preferences.values))
 	gear_button.name = "SettingsGear"
 	gear_button.custom_minimum_size = Vector2(44, 44)
@@ -1120,6 +1154,8 @@ func smoke_test(path):
 		get_tree().quit(3)
 		return
 	print("SMOKE_CONNECTED ", snapshot.viewer_side, " version=", snapshot.state_version)
+	if data.has("sidebar_visible") and sidebar_scroll.visible != data.sidebar_visible:
+		await _smoke_mouse_click(sidebar_button.get_global_rect().get_center())
 	if data.has("move"):
 		await _smoke_click_square(data.move.substr(0, 2))
 		if selected_square != data.move.substr(0, 2):
@@ -1150,6 +1186,6 @@ func smoke_test(path):
 		get_viewport().get_texture().get_image().save_png(path + ".png")
 	print("SMOKE_FINAL version=", snapshot.state_version)
 	var report = FileAccess.open(path + ".result.json", FileAccess.WRITE)
-	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces, "connection_state": connection_state, "replayed_request_id": replayed_id, "pending_count": pending.size()}))
+	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces, "connection_state": connection_state, "replayed_request_id": replayed_id, "pending_count": pending.size(), "sidebar_visible": sidebar_scroll.visible}))
 	report.close()
 	get_tree().quit(0 if snapshot.state_version >= int(data.get("expected_version", 0)) and connection_state == "connected" and pending.is_empty() else 4)

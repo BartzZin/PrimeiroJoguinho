@@ -53,6 +53,7 @@ def main():
             "expected_version": 2,
             "wait_for_version": 0 if side == "white" else 1,
             "show_settings": args.show_settings,
+            "sidebar_visible": side == "white",
             "reconnect": args.reconnect,
             "move": "e2e4" if side == "white" else "e7e5",
         }
@@ -79,6 +80,7 @@ def main():
         assert result.returncode == 0 and int(report["state_version"]) >= 2
         assert report["connection_state"] == "connected"
         assert report["pending_count"] == 0
+        assert report["sidebar_visible"] == (side == "white")
         if args.reconnect:
             assert report["replayed_request_id"]
         assert "SCRIPT ERROR" not in result.stderr and "ERROR:" not in result.stderr

@@ -178,9 +178,38 @@ func run():
 	game.handle_message(snapshot())
 	await process_frame
 	await physics_frame
+	check(not game.sidebar_scroll.visible and not game.sidebar_button.button_pressed, "Sidebar must default to hidden")
+	var wide_stage = game.stage.size.x
+	game.room_field.text = "keep-this-field"
+	game.selected_square = "e2"
+	await game._smoke_mouse_click(game.sidebar_button.get_global_rect().get_center())
+	check(game.sidebar_scroll.visible and game.sidebar_button.button_pressed, "Mouse must show sidebar and mark toggle")
+	check(game.stage.size.x < wide_stage, "Expanded sidebar must reserve horizontal space")
+	check(game.sidebar_button.get_global_rect().end.x < game.gear_button.get_global_rect().position.x, "Menu must sit left of gear")
+	var saved_sidebar = PREFS.new()
+	saved_sidebar.load_profile(test_profile)
+	check(saved_sidebar.values.sidebar_visible, "Sidebar preference must survive reopening")
+	var independent = PREFS.new()
+	check(not independent.values.sidebar_visible, "New profiles must keep sidebar hidden")
+	game.sidebar_scroll.scroll_vertical = 200
+	await process_frame
+	var saved_scroll = game.sidebar_scroll.scroll_vertical
+	game.queued_picks.append(Vector2(10, 10))
+	game.toggle_sidebar(false)
+	check(game.queued_picks.is_empty(), "Layout toggle must discard stale physical picks")
+	await process_frame
+	await game._smoke_mouse_click(game.sidebar_button.get_global_rect().get_center())
+	check(game.room_field.text == "keep-this-field" and game.selected_square == "e2", "Toggling must preserve fields and selection")
+	check(game.sidebar_scroll.scroll_vertical == saved_scroll, "Toggling must preserve scroll position")
+	await game._smoke_mouse_click(game.sidebar_button.get_global_rect().get_center())
+	check(not game.sidebar_scroll.visible and game.stage.size.x == wide_stage, "Hidden sidebar must return space to board")
+	game.clear_selection()
 	check(not game.gear_button.get_global_rect().intersects(game.stage.get_global_rect()) and not game.gear_button.get_global_rect().intersects(game.cards_row.get_global_rect()), "Gear must reserve space outside the board and cards")
 	await game._smoke_mouse_click(game.gear_button.get_global_rect().get_center())
 	check(game.settings_menu.visible, "Gear mouse click must open settings")
+	await game._smoke_mouse_click(game.sidebar_button.get_global_rect().get_center())
+	check(not game.settings_menu.visible and not game.sidebar_scroll.visible, "First click outside settings must only close settings")
+	await game._smoke_mouse_click(game.gear_button.get_global_rect().get_center())
 	await process_frame
 	check(Rect2(Vector2.ZERO, game.size).encloses(game.settings_menu.panel.get_global_rect()), "Settings must stay inside the window")
 	check(game.settings_menu.content.get_child(1) == game.settings_menu.logs_checkbox, "Detailed logs must be the first setting")

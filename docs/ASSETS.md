@@ -8,6 +8,7 @@
 - Miniaturas procedurais anteriores: gerador preservado em `tools/generate_models.py`, agora com saída em `.runtime/prototype-models`, fora dos recursos do jogo.
 - Doze símbolos de cartas `.svg`: desenhos vetoriais originais de `tools/generate_card_icons.py`.
 - Engrenagem de configurações: desenho vetorial original em `client-godot/assets/ui/gear.svg`.
+- Ícone de três riscos da barra lateral: desenho vetorial original em `client-godot/assets/ui/menu.svg`.
 - Moldura do tabuleiro: geometria original com bordas arredondadas e incrustações de latão, gerada por `tools/generate_board.py` em `client-godot/assets/board/frame.glb` com Blender 4.5.3 LTS.
 - Casas do tabuleiro: geometria interativa Godot com acabamento procedural de pedra em `client-godot/assets/board/stone.gdshader`. Materiais, interface e efeitos: código do projeto.
 - `Xadrez mágico em estilo anime.png`: referência fornecida pelo proprietário; não incorporada ao executável.

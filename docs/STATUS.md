@@ -18,6 +18,7 @@
 - 43 testes do servidor aprovados, incluindo captura segura de logs, sockets reais e dois escritores concorrentes no PostgreSQL. Ruff aprovado.
 - Correções de interação: mundo 3D explícito e consultas físicas no processamento de física; regressões por cliques nos dois lados, com rotação de câmera e redimensionamento.
 - Indicador de conexão separado das ações, confirmação pelo primeiro snapshot, prazo de 10 segundos e três reconexões automáticas; reenvio mantém o identificador do comando.
+- Barra lateral recolhível pelo botão ☰ ao lado da engrenagem, inicialmente oculta, com preferência por perfil e preservação de campos, seleção e rolagem; regressões de cliques com ambos os layouts.
 - Engrenagem no rodapé com logs detalhados como primeiro checkbox; preferências locais separadas das sessões, qualidade, animações, visão superior e tela cheia.
 - Logs estruturados do cliente com captura de erros de scripts, rotação, proteção de dados e escrita concorrente; inicializador e servidor também possuem registros operacionais.
 

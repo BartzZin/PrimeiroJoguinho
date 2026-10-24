@@ -1,7 +1,7 @@
 extends RefCounted
 ## Preferences live apart from session credentials and are scoped to each profile.
 
-const DEFAULTS = {"detailed_logs": false, "quality": 2, "animations": true, "top_view": false, "fullscreen": false}
+const DEFAULTS = {"detailed_logs": false, "quality": 2, "animations": true, "top_view": false, "fullscreen": false, "sidebar_visible": false}
 var values = DEFAULTS.duplicate()
 var path = ""
 

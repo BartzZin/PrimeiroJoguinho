@@ -78,24 +78,38 @@ func run():
 	check(blue.get_child(0).scene_file_path.contains("/blue/"), "Solar must use the blue army")
 	check(red.get_child(0).scene_file_path.contains("/red/"), "Lunar must use the red army")
 	check(blue.basis.z.dot(red.basis.z) < 0, "Armies must face each other")
-	# Exercise the same selection/highlighting path used by the mouse.
 	await process_frame
-	await physics_frame
-	await game._smoke_click_square("e2")
-	check(game.selected_square == "e2", "Model replacement must preserve square selection")
-	await game._smoke_click_square("e4")
-	check(game.received_commands.size() == 1 and game.received_commands[0].payload == {"from": "e2", "to": "e4"}, "Mouse selection must produce the actual move command")
-	game.snapshot.viewer_side = "black"
-	game.snapshot.legal_moves = ["e7e5"]
-	game.camera_yaw = 0.3
-	game.camera_pitch = 1.0
-	game.camera_distance = 12
-	game.position_camera()
-	game.clear_selection()
-	await game._smoke_click_square("e7")
-	check(game.selected_square == "e7", "Black camera must select the correct square")
-	await game._smoke_click_square("e5")
-	check(game.received_commands.size() == 2 and game.received_commands[1].payload == {"from": "e7", "to": "e5"}, "Black mouse selection must send e7e5")
+	await process_frame
+	# Real mouse events in both layouts and both camera orientations.
+	for expanded in [true, false]:
+		await game._smoke_mouse_click(game.sidebar_button.get_global_rect().get_center())
+		check(game.sidebar_scroll.visible == expanded, "Sidebar toggle must change layout")
+		root.mode = Window.MODE_WINDOWED
+		root.size = Vector2i(1280, 800) if expanded else Vector2i(1920, 1080)
+		await process_frame
+		await process_frame
+		var command_count = game.received_commands.size()
+		game.snapshot.viewer_side = "white"
+		game.snapshot.legal_moves = ["e2e4"]
+		game.clear_selection()
+		game.position_camera()
+		await process_frame
+		await physics_frame
+		await game._smoke_click_square("e2")
+		check(game.selected_square == "e2", "Model replacement must preserve square selection")
+		await game._smoke_click_square("e4")
+		check(game.received_commands.size() == command_count + 1 and game.received_commands[command_count].payload == {"from": "e2", "to": "e4"}, "Mouse selection must produce the actual move command")
+		game.snapshot.viewer_side = "black"
+		game.snapshot.legal_moves = ["e7e5"]
+		game.camera_yaw = 0.3
+		game.camera_pitch = 1.0
+		game.camera_distance = 12
+		game.position_camera()
+		game.clear_selection()
+		await game._smoke_click_square("e7")
+		check(game.selected_square == "e7", "Black camera must select the correct square")
+		await game._smoke_click_square("e5")
+		check(game.received_commands.size() == command_count + 2 and game.received_commands[command_count + 1].payload == {"from": "e7", "to": "e5"}, "Black mouse selection must send e7e5")
 	game.snapshot.viewer_side = "white"
 	game.camera_yaw = 0
 	game.camera_pitch = 0.85
