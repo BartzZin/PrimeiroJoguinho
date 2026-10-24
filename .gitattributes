@@ -7,4 +7,5 @@
 *.cmd text eol=crlf
 *.glb binary
 *.png binary
+*.wav binary
 *.exe binary

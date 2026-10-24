@@ -38,6 +38,8 @@ jobs:
           unzip Godot_v4.7.2-stable_linux.x86_64.zip
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --editor --import --quit
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/models.gd
+      - name: Piece motion, persistent presentation and snapshot synchronization
+        run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/pieces.gd
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/diagnostics.gd
       - name: Stable hand, captured drags and command lifecycle
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/cards.gd

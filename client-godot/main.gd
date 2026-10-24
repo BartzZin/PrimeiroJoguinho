@@ -1,7 +1,7 @@
 extends Control
 
 const NAMES = {"p": "Peão", "r": "Torre", "n": "Cavalo", "b": "Bispo", "q": "Dama", "k": "Rei"}
-const PIECE_MODELS = preload("res://piece_models.gd")
+const BoardPiecesPresenter = preload("res://board_pieces_presenter.gd")
 const BOARD_FRAME = preload("res://assets/board/frame.glb")
 const STONE_SHADER = preload("res://assets/board/stone.gdshader")
 const DIAGNOSTICS = preload("res://diagnostics.gd")
@@ -35,7 +35,7 @@ var stage: SubViewportContainer
 var viewport: SubViewport
 var camera: Camera3D
 var board_root: Node3D
-var pieces_root: Node3D
+var pieces_root: BoardPiecesPresenter
 var socket = WebSocketPeer.new()
 var session = {}
 var snapshot = {}
@@ -66,7 +66,13 @@ var refresh_in_progress = false
 var token_deadline = 0
 var profile = "default"
 var top_view = false
-var animate_moves = true
+var animate_moves: bool = true:
+	set(value):
+		animate_moves = value
+		if is_instance_valid(pieces_root):
+			pieces_root.set_animations_enabled(value)
+		if is_instance_valid(cards_row):
+			cards_row.animate_moves = value
 var camera_yaw = 0.0
 var camera_pitch = 0.85
 var camera_distance = 11.5
@@ -154,7 +160,7 @@ func set_status(text_value):
 func apply_preferences():
 	apply_sidebar_visibility(preferences.values.sidebar_visible)
 	animate_moves = preferences.values.animations
-	cards_row.animate_moves = animate_moves
+	pieces_root.set_sounds_enabled(preferences.values.sound_effects)
 	top_view = preferences.values.top_view
 	set_graphics_quality(preferences.values.quality)
 	position_camera()
@@ -177,7 +183,8 @@ func change_setting(key, value):
 		set_graphics_quality(value)
 	elif key == "animations":
 		animate_moves = value
-		cards_row.animate_moves = value
+	elif key == "sound_effects":
+		pieces_root.set_sounds_enabled(value)
 	elif key == "top_view":
 		top_view = value
 		position_camera()
@@ -478,7 +485,9 @@ func build_stage():
 			collision.shape.size = Vector3(1, 0.3, 1)
 			body.add_child(collision)
 			board_root.add_child(body)
-	pieces_root = Node3D.new()
+	pieces_root = BoardPiecesPresenter.new()
+	pieces_root.setup(world_square)
+	pieces_root.set_animations_enabled(animate_moves)
 	viewport.add_child(pieces_root)
 	for index in range(8):
 		for edge in [-1, 1]:
@@ -715,12 +724,15 @@ func connect_match():
 		_card_cancelled()
 		pending.clear()
 		snapshot.clear()
+		pieces_root.clear()
 		connected_match_id = match_id
 	_begin_connection()
 
 
 func set_connection_state(value):
 	connection_state = value
+	if is_instance_valid(pieces_root):
+		pieces_root.set_active(value == "connected" and snapshot.get("status") == "active")
 	if value != "connected" and is_instance_valid(cards_row):
 		cards_row.cancel()
 	connection_label.text = {"idle": "Sem partida", "connecting": "Conectando", "connected": "Conectado", "reconnecting": "Reconectando", "failed": "Falha na conexão"}[value]
@@ -835,9 +847,9 @@ func handle_message(data):
 				pending[key].sent_at = Time.get_ticks_msec() - 5001
 		var clocks = data.clock_ms
 		clocks_label.text = "SOLAR · AZUL  %s     •     LUNAR · VERMELHO  %s" % [clock_text(clocks.white), clock_text(clocks.black)]
-		if data.state_version != rendered_version:
+		if first_snapshot or data.state_version != rendered_version:
 			rendered_version = data.state_version
-			render_snapshot()
+			render_snapshot(not first_snapshot)
 	elif message_type == "clock.sync" and data.get("snapshot") is Dictionary:
 		handle_message(data.snapshot)
 	elif message_type in ["command.accepted", "command.rejected"]:
@@ -924,31 +936,10 @@ func send_command(kind, payload):
 	return request_id
 
 
-func render_snapshot():
+func render_snapshot(animate_transition: bool = true):
 	position_camera()
-	var previous = {}
-	for child in pieces_root.get_children():
-		previous[child.name] = child.position
-		child.free()
-	for piece in snapshot.pieces:
-		var root = Node3D.new()
-		root.name = piece.id
-		var destination = world_square(piece.square) + Vector3(0, 0.095, 0)
-		root.position = previous.get(piece.id, destination) if animate_moves else destination
-		root.add_child(PIECE_MODELS.create(piece.kind, piece.side))
-		pieces_root.add_child(root)
-		for effect in snapshot.public_effects:
-			if effect.get("piece_id") == piece.id:
-				var ring = MeshInstance3D.new()
-				ring.mesh = TorusMesh.new()
-				ring.mesh.inner_radius = 0.32
-				ring.mesh.outer_radius = 0.4
-				ring.position.y = 0.2 + root.get_child_count() * 0.09
-				var tint = Color("55d7ff") if effect.kind == "shield" else Color("997cff")
-				ring.material_override = material(tint)
-				root.add_child(ring)
-		if animate_moves and root.position != destination:
-			create_tween().tween_property(root, "position", destination, 0.2)
+	pieces_root.set_active(connection_state == "connected" and snapshot.get("status") == "active")
+	pieces_root.synchronize(snapshot.pieces, snapshot.public_effects, animate_transition and connection_state == "connected")
 	cards_row.animate_moves = animate_moves
 	cards_row.update_hand(snapshot.my_hand, cards, snapshot.get("can_cast", false), int(snapshot.my_mana), int(snapshot.get("state_version", -1)))
 	if snapshot.tutorial == null:

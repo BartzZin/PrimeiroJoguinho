@@ -57,6 +57,7 @@ func _ready():
 	quality.item_selected.connect(func(index): setting_changed.emit("quality", index))
 	content.add_child(quality)
 	add_toggle("Animações de movimento", "animations")
+	add_toggle("Efeitos sonoros", "sound_effects")
 	add_toggle("Visão superior", "top_view")
 	add_toggle("Tela cheia (F11)", "fullscreen")
 	resized.connect(reposition)

@@ -67,14 +67,14 @@ func run():
 	game.render_snapshot()
 	check(game.pieces_root.get_child_count() == 32, "Initial board must display 32 miniatures")
 	for piece in game.pieces_root.get_children():
-		var miniature = piece.get_child(0)
+		var miniature = piece.miniature
 		var bounds = MODELS.mesh_bounds(miniature)
 		check(absf(bounds.position.y) < 0.001, "Miniature base must rest on the square")
 		check(bounds.size.x <= MODELS.MAX_FOOTPRINT + 0.001 and bounds.size.z <= MODELS.MAX_FOOTPRINT + 0.001, "Miniature must fit inside its square")
 		check(absf(bounds.get_center().x) < 0.001 and absf(bounds.get_center().z) < 0.001, "Miniature must be centered")
 		check_materials(miniature)
-	var blue = game.pieces_root.get_node("white-p-0").get_child(0)
-	var red = game.pieces_root.get_node("black-p-0").get_child(0)
+	var blue = game.pieces_root.get_node("white-p-0").miniature
+	var red = game.pieces_root.get_node("black-p-0").miniature
 	check(blue.get_child(0).scene_file_path.contains("/blue/"), "Solar must use the blue army")
 	check(red.get_child(0).scene_file_path.contains("/red/"), "Lunar must use the red army")
 	check(blue.basis.z.dot(red.basis.z) < 0, "Armies must face each other")
@@ -134,12 +134,14 @@ func run():
 	game.snapshot.public_effects = [{"piece_id": "white-p-0", "kind": "shield"}]
 	game.render_snapshot()
 	var promoted = game.pieces_root.get_node("white-p-0")
-	check(promoted.get_child(0).get_child(0).scene_file_path.ends_with("/blue/queen.glb"), "Promotion must replace the pawn with the blue queen")
-	check(promoted.get_child_count() == 2, "Magic effects must coexist with textured models")
+	check(promoted.miniature.get_child(0).scene_file_path.ends_with("/blue/queen.glb"), "Promotion must replace the pawn with the blue queen")
+	check(promoted.effects_root.get_child_count() == 1, "Magic effects must coexist with textured models")
 	game.snapshot.pieces.pop_back()
 	game.render_snapshot()
 	check(game.pieces_root.get_child_count() == 31, "Captured model must disappear")
 	print("MODELS: 12 textured variants, 32 pieces, Full HD, quality settings, framing, selection, move, promotion, capture and effects; failures=", failures)
 	game.queue_free()
 	await process_frame
+	# Let the audio mixer release a contact sample after its player is disposed.
+	await create_timer(0.2).timeout
 	quit(0 if failures == 0 else 1)
