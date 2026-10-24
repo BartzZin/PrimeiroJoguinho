@@ -4,7 +4,21 @@ Existe **um modelo de carta em produção**: `client-godot/assets/cards/models/c
 As 12 magias mudam apenas a imagem da face; corpo, moldura e malhas são compartilhados.
 Nome, custo e descrição continuam como texto acessível do Godot.
 
-A mão é uma sobreposição transparente ao tabuleiro, sem faixa de fundo ou espaço reservado no layout. As cartas ficam em leque, com cerca de 320 px em Full HD; nome e mana são `Label3D` presos à face e a ilustração deixa espaço inferior para texto futuro. A descrição permanece no tooltip. O mouse sobre o tabuleiro recolhe a mão a 72 px visíveis; passar nas bordas reabre. Transições de 180 ms respeitam a opção de animações. As áreas clicáveis seguem os polígonos projetados, permitindo clicar no jogo entre cartas; menus e rodapé permanecem acima/fora da mão.
+A mão é uma sobreposição transparente ao tabuleiro, com cartas de cerca de 320 px em Full HD. Nome e mana são `Label3D` presos à face; a descrição continua no tooltip. Abertura e fechamento usam zonas fixas com margem de 24 px, atraso de fechamento de 250 ms e amortecimento contínuo, com estabilização visual próxima de 350 ms. Clique pressionado e seleção travam a abertura. A carta selecionada fica em 106% e as demais em 80%, com destaque apenas na moldura dourada original.
+
+As vistas são reconciliadas por `instance_id`; movimentos, mana, turno e relógio não recriam a mão. Arrastar por pelo menos 8 px inicia a captura até a soltura; a prévia usa 220 px e libera a casa sob o cursor. `card_targets.gd` verifica somente dados autorizados; a consulta física e o envio continuam no cliente principal. Cartas pessoais usam alvo `{}` em qualquer casa. Dissipação oferece escolha local se houver dois efeitos.
+
+Os estados de arraste, escolha, confirmação e retorno são distintos. A vista da carta enviada permanece reservada pelo `request_id` até confirmação e snapshot correspondente, em qualquer ordem. Só então encolhe e desaparece uma vez; rejeições restauram a mesma vista. Reconexões preservam o comando existente. Efeitos de posições privadas são produzidos apenas na sessão autorizada. O servidor, protocolo e banco não mudam.
+
+Teste real contra o backend local, usando apenas uma sala nova de teste e dados próprios:
+
+```powershell
+.venv\Scripts\python.exe tools/smoke_clients.py --visible --executable exports/windows/XadrezArcano.exe --spell frost_bind --reconnect
+.venv\Scripts\python.exe tools/smoke_clients.py --visible --executable exports/windows/XadrezArcano.exe --spell hidden_snare --reconnect
+```
+
+Esses testes configuram somente a partida recém-criada, executam pressionar/mover/soltar nas duas janelas e verificam deduplicação e privacidade da armadilha. Não há endpoint público de testes. A CI executa os gestos das 12 cartas, estabilidade dos nós, alvos, cancelamentos e a ordem dos recibos/snapshots.
+
 
 ## Origem e preparação
 

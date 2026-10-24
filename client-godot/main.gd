@@ -8,6 +8,7 @@ const DIAGNOSTICS = preload("res://diagnostics.gd")
 const PREFERENCES = preload("res://preferences.gd")
 const SETTINGS_MENU = preload("res://settings_menu.gd")
 const CARD_HAND = preload("res://card_hand.gd")
+const CARD_TARGETS = preload("res://card_targets.gd")
 const CONNECTION_TIMEOUT_MS = 10000
 const RETRY_DELAYS_MS = [2000, 4000, 8000]
 const EFFECT_NAMES = {"shield": "escudo", "frozen": "imobilização", "ward": "proteção rúnica", "silence": "silêncio"}
@@ -20,6 +21,13 @@ var info_label: Label
 var clocks_label: Label
 var target_label: Label
 var cards_row: Control
+var card_drag_point = Vector2.ZERO
+var card_drop_queued = false
+var card_drag_active = false
+var card_preview_square = ""
+var card_preview_valid = false
+var card_effect_popup: Control
+var card_effect_square = ""
 var history_box: VBoxContainer
 var effects_box: VBoxContainer
 var catalogue: RichTextLabel
@@ -275,6 +283,11 @@ func build_ui():
 	main_column.move_child(info_label, 2)
 	cards_row = CARD_HAND.new()
 	cards_row.card_selected.connect(select_card)
+	cards_row.drag_updated.connect(_card_drag_updated)
+	cards_row.card_dropped.connect(_card_dropped)
+	cards_row.interaction_cancelled.connect(_card_cancelled)
+	cards_row.spell_resolved.connect(_card_resolved)
+	cards_row.input_blocked = func(): return is_instance_valid(settings_menu) and settings_menu.visible or is_instance_valid(card_effect_popup) and card_effect_popup.visible
 	add_child(cards_row)
 	var scroll = ScrollContainer.new()
 	sidebar_scroll = scroll
@@ -304,7 +317,7 @@ func build_ui():
 		button(titles[lesson], sidebar, start_tutorial.bind(lesson))
 	label("AÇÃO SELECIONADA", sidebar, 20)
 	target_label = label("Selecione uma peça ou carta.", sidebar)
-	button("Conjurar no alvo selecionado", sidebar, cast_selected)
+	label("Segure uma carta, arraste ao tabuleiro e solte para usar.", sidebar, 16)
 	button("Cancelar seleção", sidebar, clear_selection)
 	effects_box = VBoxContainer.new()
 	sidebar.add_child(effects_box)
@@ -521,6 +534,8 @@ func _unhandled_key_input(event):
 			get_viewport().set_input_as_handled()
 			return
 		if event.keycode == KEY_F11:
+			cards_row.cancel()
+			_close_card_effects()
 			toggle_fullscreen()
 		elif event.keycode == KEY_ESCAPE and DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]:
 			change_setting("fullscreen", false)
@@ -696,6 +711,8 @@ func connect_match():
 		set_status("Use HTTPS para servidores externos.")
 		return
 	if connected_match_id != match_id:
+		cards_row.reset()
+		_card_cancelled()
 		pending.clear()
 		snapshot.clear()
 		connected_match_id = match_id
@@ -704,6 +721,8 @@ func connect_match():
 
 func set_connection_state(value):
 	connection_state = value
+	if value != "connected" and is_instance_valid(cards_row):
+		cards_row.cancel()
 	connection_label.text = {"idle": "Sem partida", "connecting": "Conectando", "connected": "Conectado", "reconnecting": "Reconectando", "failed": "Falha na conexão"}[value]
 	connection_label.modulate = Color("70d7b2") if value == "connected" else (Color("ef9b9b") if value == "failed" else Color("d9c18d"))
 
@@ -824,8 +843,10 @@ func handle_message(data):
 	elif message_type in ["command.accepted", "command.rejected"]:
 		var request_id = data.get("request_id", "")
 		var elapsed = Time.get_ticks_msec() - pending.get(request_id, {}).get("created_at", Time.get_ticks_msec())
+		cards_row.receipt(request_id, message_type == "command.accepted", int(data.get("state_version", -1)))
 		pending.erase(request_id)
 		if message_type == "command.rejected" and request_id == "":
+			cards_row.receipt(cards_row.pending_request, false, int(data.get("state_version", -1)))
 			pending.clear()
 		log_event("ERROR" if message_type == "command.rejected" else "INFO", message_type, {"request_id": request_id, "code": data.get("code", "OK"), "duration_ms": elapsed})
 		if message_type == "command.rejected":
@@ -900,6 +921,7 @@ func send_command(kind, payload):
 	var error = socket.send_text(JSON.stringify(command))
 	if error != OK:
 		_connection_failed(error_string(error))
+	return request_id
 
 
 func render_snapshot():
@@ -928,22 +950,31 @@ func render_snapshot():
 		if animate_moves and root.position != destination:
 			create_tween().tween_property(root, "position", destination, 0.2)
 	cards_row.animate_moves = animate_moves
-	cards_row.update_hand(snapshot.my_hand, cards, snapshot.get("can_cast", false), int(snapshot.my_mana))
+	cards_row.update_hand(snapshot.my_hand, cards, snapshot.get("can_cast", false), int(snapshot.my_mana), int(snapshot.get("state_version", -1)))
 	if snapshot.tutorial == null:
 		info_label.text = "%s • Sua mana %s/5 • Rival %s/5 • Mão rival %s • Baralho %s" % ["Sua vez" if snapshot.active_side == snapshot.viewer_side else "Vez do adversário", int(snapshot.my_mana), int(snapshot.opponent_mana), int(snapshot.opponent_hand_count), int(snapshot.my_deck_count)]
 	if snapshot.status != "active":
 		info_label.text = "Partida encerrada: " + str(snapshot.result_reason) + " • Vencedor: " + str(snapshot.winner)
 	elif snapshot.draw_offer != null:
 		status_label.text = "Oferta de empate pendente de " + str(snapshot.draw_offer)
-	clear_selection()
+	if card_effect_popup != null and card_effect_popup.visible:
+		var current = CARD_TARGETS.resolve(snapshot, selected_card.get("definition_id", ""), card_effect_square)
+		if not current.valid or current.effects.map(func(effect): return effect.id) != card_effect_popup.option_ids:
+			_close_card_effects()
+			cards_row.cancel()
+	clear_board_selection()
 
 
 func clear_selection():
-	cards_row.select("")
+	cards_row.cancel()
+	_card_cancelled()
+	clear_board_selection()
+
+
+func clear_board_selection():
 	selected_square = ""
-	selected_card = {}
-	selected_target = {}
-	target_label.text = "Selecione uma peça ou carta."
+	if selected_card.is_empty():
+		target_label.text = "Segure e arraste uma carta ao tabuleiro."
 	for child in effects_box.get_children():
 		child.queue_free()
 	update_tiles()
@@ -966,10 +997,14 @@ func update_tiles():
 				color_value = Color("4a936b")
 		if pos == selected_square:
 			color_value = Color("d3aa45")
+		if pos == card_preview_square:
+			color_value = Color("67e5c0") if card_preview_valid else Color("ef6666")
 		tile.get_child(0).material_override = tile_material(color_value, pos == selected_square)
 
 
 func board_input(event):
+	if card_drag_active or cards_row.busy():
+		return
 	if event is InputEventMouseMotion and event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 		camera_yaw -= event.relative.x * 0.005
 		camera_pitch = clamp(camera_pitch + event.relative.y * 0.005, 0.5, 1.45)
@@ -987,6 +1022,10 @@ func board_input(event):
 
 
 func _physics_process(_delta):
+	if card_drag_active or card_drop_queued:
+		_process_card_pick()
+		queued_picks.clear()
+		return
 	if queued_picks.is_empty():
 		return
 	if not is_instance_valid(camera) or not camera.is_inside_tree() or connection_state != "connected" or settings_menu.visible:
@@ -1015,21 +1054,7 @@ func click_square(pos):
 		if candidate.square == pos:
 			piece = candidate
 	if not selected_card.is_empty():
-		var kind = selected_card.definition_id
-		if kind in ["hidden_snare", "oracle_eye", "trap_disarm"]:
-			selected_target = {"square": pos}
-		elif kind == "dispel":
-			for child in effects_box.get_children():
-				child.queue_free()
-			for effect in snapshot.public_effects:
-				if effect.get("piece_id") == piece.get("id") and effect.kind in ["shield", "frozen"]:
-					button("Remover " + EFFECT_NAMES[effect.kind], effects_box, func(): selected_target = {"effect_id": effect.id}; target_label.text = "Efeito selecionado: " + EFFECT_NAMES[effect.kind])
-		else:
-			selected_target = {"piece_id": piece.get("id", "")}
-		selected_square = pos
-		target_label.text = "Alvo: " + pos + ". Confirme Conjurar."
-		update_tiles()
-		return
+		clear_selection()
 	var possible = []
 	for move in snapshot.get("legal_moves", []):
 		if move.begins_with(selected_square + pos) and selected_square != "":
@@ -1058,19 +1083,122 @@ func choose_promotion(origin, target):
 
 
 func select_card(card):
-	clear_selection()
+	clear_board_selection()
 	selected_card = card
-	cards_row.select(str(card.instance_id))
-	target_label.text = cards.get(card.definition_id, {"name": card.definition_id}).name + ": selecione o alvo e confirme."
-	if card.definition_id in ["arcane_focus", "arcane_draw", "silence_seal", "temporal_boost"]:
-		target_label.text = "Alvo automático. Confirme Conjurar."
+	selected_target = {}
+	target_label.text = cards.get(card.definition_id, {"name": card.definition_id}).name + ": arraste ao tabuleiro para usar."
 
 
-func cast_selected():
-	if selected_card.is_empty():
+func _card_drag_updated(point: Vector2):
+	card_drag_point = point
+	card_drag_active = true
+
+
+func _card_dropped(_card, point: Vector2):
+	card_drag_point = point
+	card_drop_queued = true
+	card_drag_active = false
+
+
+func _card_cancelled():
+	card_drag_active = false
+	card_drop_queued = false
+	card_preview_square = ""
+	selected_card = {}
+	selected_target = {}
+	_close_card_effects()
+	if is_instance_valid(target_label):
+		target_label.text = "Segure e arraste uma carta ao tabuleiro."
+	if is_instance_valid(board_root):
+		update_tiles()
+
+
+func _close_card_effects():
+	if is_instance_valid(card_effect_popup):
+		var popup = card_effect_popup
+		card_effect_popup = null
+		popup.hide()
+		popup.queue_free()
+
+
+func _process_card_pick():
+	var drop = card_drop_queued
+	card_drop_queued = false
+	var square = ""
+	var local = stage.get_global_transform_with_canvas().affine_inverse() * card_drag_point
+	if connection_state == "connected" and not settings_menu.visible and Rect2(Vector2.ZERO, stage.size).has_point(local):
+		var world = camera.get_world_3d()
+		if world != null and world.direct_space_state != null:
+			var point = local * Vector2(viewport.size) / stage.size
+			var origin = camera.project_ray_origin(point)
+			var hit = world.direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(point) * 100))
+			if not hit.is_empty(): square = hit.collider.get_meta("square", "")
+	var result = CARD_TARGETS.resolve(snapshot, selected_card.get("definition_id", ""), square)
+	if card_preview_square != square or card_preview_valid != result.valid:
+		card_preview_square = square
+		card_preview_valid = result.valid
+		update_tiles()
+	if not drop:
 		return
-	send_command("spell.request", {"card_instance_id": selected_card.instance_id, "target": selected_target})
-	clear_selection()
+	if not result.valid or selected_card.is_empty() or not pending.is_empty():
+		cards_row.cancel()
+		set_status("Solte a carta em um alvo válido do tabuleiro.")
+		return
+	if result.effects.size() > 1:
+		card_effect_square = square
+		card_effect_popup = preload("res://card_effect_menu.gd").new()
+		card_effect_popup.chosen.connect(_choose_card_effect)
+		card_effect_popup.cancelled.connect(func(): _close_card_effects(); cards_row.cancel())
+		add_child(card_effect_popup)
+		card_effect_popup.present(result.effects, get_global_transform_with_canvas().affine_inverse() * card_drag_point)
+		return
+	_submit_card(result.target)
+
+
+func _choose_card_effect(id: String):
+	var result = CARD_TARGETS.resolve(snapshot, selected_card.get("definition_id", ""), card_effect_square)
+	var found = result.effects.any(func(effect): return effect.id == id)
+	_close_card_effects()
+	if not found:
+		cards_row.cancel()
+		return
+	_submit_card({"effect_id": id})
+
+
+func _submit_card(target: Dictionary):
+	var request_id = send_command("spell.request", {"card_instance_id": selected_card.instance_id, "target": target})
+	if request_id == null or str(request_id) == "":
+		cards_row.cancel()
+		return
+	cards_row.reserve(str(request_id))
+	card_preview_square = ""
+	update_tiles()
+	set_status("Ativando carta; aguardando confirmação…")
+
+
+func _card_resolved(definition: String, point: Vector2):
+	# This signal only belongs to this player's pending command. Hidden targets stay local.
+	var local = stage.get_global_transform_with_canvas().affine_inverse() * point
+	var origin = camera.project_ray_origin(local * Vector2(viewport.size) / stage.size)
+	var direction = camera.project_ray_normal(local * Vector2(viewport.size) / stage.size)
+	if absf(direction.y) < 0.001: return
+	var position_value = origin + direction * (-origin.y / direction.y)
+	var ring = MeshInstance3D.new()
+	ring.mesh = TorusMesh.new()
+	ring.mesh.inner_radius = 0.29
+	ring.mesh.outer_radius = 0.34
+	ring.position = position_value + Vector3(0, 0.15, 0)
+	var paint = StandardMaterial3D.new()
+	paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	paint.albedo_color = Color("83e8ff") if definition == "frost_bind" else Color("e5bc69")
+	ring.material_override = paint
+	viewport.add_child(ring)
+	var effect_tween = create_tween()
+	if animate_moves:
+		effect_tween.tween_property(ring, "scale", Vector3.ONE * 1.8, 0.25)
+	else:
+		effect_tween.tween_interval(0.12)
+	effect_tween.tween_callback(ring.queue_free)
 
 
 func confirm_resign():
@@ -1101,10 +1229,11 @@ func load_history():
 			label(str(event.seq) + " • " + event.type + " " + str(event.get("move", event.get("card", event.get("reason", "")))), history_box, 14)
 
 
-func _smoke_pointer(position):
+func _smoke_pointer(position, held: bool = false):
 	var motion = InputEventMouseMotion.new()
 	motion.position = position
 	motion.global_position = position
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT if held else 0
 	get_viewport().push_input(motion, true)
 	await get_tree().process_frame
 
@@ -1130,10 +1259,45 @@ func _smoke_click_square(square):
 	for polygon in cards_row.projected_polygons.values():
 		if not cards_row.retracted and Geometry2D.is_point_in_polygon(local, polygon):
 			await _smoke_pointer(stage.get_global_transform_with_canvas() * Vector2(12, 12))
-			if cards_row.animate_moves:
-				await get_tree().create_timer(0.22).timeout
+			await get_tree().create_timer(0.7 if cards_row.animate_moves else 0.28).timeout
 			break
 	await _smoke_mouse_click(stage.get_global_transform_with_canvas() * local)
+
+
+func _smoke_drag_card(definition: String, square: String, pause_before_release: bool):
+	var card = {}
+	for candidate in snapshot.my_hand:
+		if candidate.definition_id == definition: card = candidate
+	if card.is_empty(): return false
+	await _smoke_pointer(cards_row.get_global_transform_with_canvas() * cards_row.activation_strip().get_center())
+	await get_tree().create_timer(0.7).timeout
+	var control = cards_row.buttons[str(card.instance_id)]
+	var start = control.get_global_transform_with_canvas() * (control.size / 2)
+	await _smoke_pointer(start)
+	var down = InputEventMouseButton.new()
+	down.position = start
+	down.global_position = start
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.button_mask = MOUSE_BUTTON_MASK_LEFT
+	down.pressed = true
+	get_viewport().push_input(down, true)
+	await get_tree().process_frame
+	await _smoke_pointer(start + Vector2(12, -16), true)
+	var point = camera.unproject_position(world_square(square) + Vector3(0, 0.09, 0))
+	var destination = stage.get_global_transform_with_canvas() * (point * stage.size / Vector2(viewport.size))
+	for step in range(1, 7):
+		await _smoke_pointer(start.lerp(destination, step / 6.0), true)
+		await get_tree().physics_frame
+	if pause_before_release: set_process(false)
+	var up = InputEventMouseButton.new()
+	up.position = destination
+	up.global_position = destination
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	get_viewport().push_input(up, true)
+	await get_tree().physics_frame
+	await get_tree().process_frame
+	return true
 
 
 func smoke_test(path):
@@ -1150,13 +1314,38 @@ func smoke_test(path):
 	var deadline = Time.get_ticks_msec() + 15000
 	while (connection_state != "connected" or snapshot.get("state_version", -1) < int(data.get("wait_for_version", 0))) and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.1).timeout
-	if snapshot.is_empty() or connection_state != "connected":
+	if snapshot.is_empty() or connection_state != "connected" or snapshot.get("state_version", -1) < int(data.get("wait_for_version", 0)):
 		push_error("SMOKE_NO_SNAPSHOT")
 		get_tree().quit(3)
 		return
+	var frozen_verified = false
+	if data.get("verify_frozen_a7", false):
+		var pawn_id = ""
+		for piece in snapshot.pieces:
+			if piece.square == "a7": pawn_id = piece.id
+		frozen_verified = snapshot.public_effects.any(func(effect): return effect.kind == "frozen" and effect.piece_id == pawn_id) and not snapshot.legal_moves.has("a7a6") and not snapshot.legal_moves.has("a7a5")
+		if not frozen_verified:
+			push_error("SMOKE_FROZEN_TARGET_NOT_CONFIRMED")
+			get_tree().quit(9)
+			return
 	print("SMOKE_CONNECTED ", snapshot.viewer_side, " version=", snapshot.state_version)
+	if data.has("spell"):
+		if not await _smoke_drag_card(data.spell, data.get("spell_square", "a7"), data.get("reconnect_spell", false)):
+			get_tree().quit(7)
+			return
+		if data.get("reconnect_spell", false):
+			socket.close()
+			set_process(true)
+		var spell_deadline = Time.get_ticks_msec() + 20000
+		while (snapshot.state_version < 1 or not pending.is_empty() or cards_row.resolution_count < 1 or cards_row.busy()) and Time.get_ticks_msec() < spell_deadline:
+			await get_tree().create_timer(0.1).timeout
+		if cards_row.resolution_count != 1:
+			push_error("SMOKE_SPELL_NOT_RESOLVED")
+			get_tree().quit(8)
+			return
+
 	if data.has("sidebar_visible") and sidebar_scroll.visible != data.sidebar_visible:
-		await _smoke_mouse_click(sidebar_button.get_global_rect().get_center())
+		await _smoke_mouse_click(sidebar_button.get_global_transform_with_canvas() * (sidebar_button.size / 2))
 	if data.has("move"):
 		await _smoke_click_square(data.move.substr(0, 2))
 		if selected_square != data.move.substr(0, 2):
@@ -1181,15 +1370,15 @@ func smoke_test(path):
 		await get_tree().create_timer(0.2).timeout
 	if not cards_row.holders.is_empty():
 		await _smoke_pointer(cards_row.get_global_transform_with_canvas() * cards_row.activation_strip().get_center())
-		await get_tree().create_timer(0.22).timeout
+		await get_tree().create_timer(0.7).timeout
 	if data.get("show_settings", false):
-		await _smoke_mouse_click(gear_button.get_global_rect().get_center())
+		await _smoke_mouse_click(gear_button.get_global_transform_with_canvas() * (gear_button.size / 2))
 		await get_tree().process_frame
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(path + ".png")
 	print("SMOKE_FINAL version=", snapshot.state_version)
 	var report = FileAccess.open(path + ".result.json", FileAccess.WRITE)
-	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces, "connection_state": connection_state, "replayed_request_id": replayed_id, "pending_count": pending.size(), "sidebar_visible": sidebar_scroll.visible}))
+	report.store_string(JSON.stringify({"state_version": snapshot.state_version, "viewer_side": snapshot.viewer_side, "pieces": snapshot.pieces, "connection_state": connection_state, "replayed_request_id": replayed_id, "pending_count": pending.size(), "sidebar_visible": sidebar_scroll.visible, "card_resolutions": cards_row.resolution_count, "frozen_verified": frozen_verified}))
 	report.close()
 	get_tree().quit(0 if snapshot.state_version >= int(data.get("expected_version", 0)) and connection_state == "connected" and pending.is_empty() else 4)

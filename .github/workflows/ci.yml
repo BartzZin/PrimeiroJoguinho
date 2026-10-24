@@ -39,7 +39,7 @@ jobs:
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --editor --import --quit
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/models.gd
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/diagnostics.gd
-      - name: Floating cards, projected picking and mouse targeting
+      - name: Stable hand, captured drags and command lifecycle
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/cards.gd
       - uses: actions/setup-python@v5
         with:

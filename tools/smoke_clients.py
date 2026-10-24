@@ -9,7 +9,8 @@ from pathlib import Path
 import httpx
 from app.main import Settings
 from app.service import Service
-from app.storage import database
+from app.storage import database, matches
+from sqlalchemy import select, update
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,6 +21,7 @@ def main():
     parser.add_argument("--executable", type=Path)
     parser.add_argument("--show-settings", action="store_true")
     parser.add_argument("--reconnect", action="store_true")
+    parser.add_argument("--spell", choices=["frost_bind", "hidden_snare"])
     args = parser.parse_args()
     runtime = ROOT / ".runtime"
     runtime.mkdir(exist_ok=True)
@@ -43,6 +45,14 @@ def main():
     response = client.post(f"/v1/rooms/{code}/join", headers=black_header)
     response.raise_for_status()
     match_id = response.json()["match_id"]
+    if args.spell:
+        # Seed only this freshly created test match; no public testing API or schema change.
+        with service.engine.begin() as connection:
+            state = connection.execute(select(matches.c.snapshot).where(matches.c.id == match_id)).scalar_one()
+            state["players"]["white"]["hand"][0]["definition_id"] = args.spell
+            state["players"]["white"]["mana"] = 5
+            connection.execute(update(matches).where(matches.c.id == match_id).values(snapshot=state))
+
     executable = args.executable or ROOT / ".tools/godot/Godot_v4.7.2-stable_win64_console.exe"
 
     def run(side):
@@ -50,13 +60,17 @@ def main():
             "server": base,
             "session": sessions[side],
             "match_id": match_id,
-            "expected_version": 2,
-            "wait_for_version": 0 if side == "white" else 1,
+            "expected_version": 3 if args.spell else 2,
+            "wait_for_version": 0 if side == "white" else (2 if args.spell else 1),
             "show_settings": args.show_settings,
             "sidebar_visible": side == "white",
             "reconnect": args.reconnect,
             "move": "e2e4" if side == "white" else "e7e5",
         }
+        if args.spell and side == "white":
+            data.update(spell=args.spell, spell_square="a7" if args.spell == "frost_bind" else "d4", reconnect_spell=args.reconnect)
+        if args.spell == "frost_bind" and side == "black":
+            data["verify_frozen_a7"] = True
         path = runtime / f"smoke-{side}.json"
         path.write_text(json.dumps(data), encoding="utf-8")
         command = [str(executable)]
@@ -76,11 +90,16 @@ def main():
         )
         path.unlink(missing_ok=True)  # remove short-lived session credentials, keep screenshots
         print(side, result.returncode, result.stdout, result.stderr)
+        assert result.returncode == 0, f"{side}: Godot exited with {result.returncode}"
         report = json.loads(Path(str(path) + ".result.json").read_text(encoding="utf-8"))
         assert result.returncode == 0 and int(report["state_version"]) >= 2
         assert report["connection_state"] == "connected"
         assert report["pending_count"] == 0
+        if args.spell and side == "white":
+            assert report["card_resolutions"] == 1
         assert report["sidebar_visible"] == (side == "white")
+        if args.spell == "frost_bind" and side == "black":
+            assert report["frozen_verified"]
         if args.reconnect:
             assert report["replayed_request_id"]
         assert "SCRIPT ERROR" not in result.stderr and "ERROR:" not in result.stderr
@@ -89,7 +108,11 @@ def main():
         list(executor.map(run, ("white", "black")))
     view = client.get(f"/v1/matches/{match_id}", headers=black_header).json()
     assert any(p["square"] == "e4" and p["kind"] == "p" for p in view["pieces"])
-    assert view["state_version"] == 2, "Reconnect must not apply a command twice"
+    assert view["state_version"] == (3 if args.spell else 2), "Reconnect must not apply a command twice"
+    if args.spell == "hidden_snare":
+        assert not view["revealed_traps"] and not view["my_traps"]
+        own = client.get(f"/v1/matches/{match_id}", headers=white_header).json()
+        assert any(trap["square"] == "d4" for trap in own["my_traps"])
     print("Two Godot clients synchronized successfully.")
 
 

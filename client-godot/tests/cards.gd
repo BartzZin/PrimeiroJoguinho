@@ -1,259 +1,288 @@
 extends SceneTree
-
-const PREVIEW = preload("res://tests/models.gd")
 const HAND = preload("res://card_hand.gd")
 var failures = 0
+var sequence = 0
 
+class DragGame:
+	extends "res://main.gd"
+	var received_commands = []
+	func _ready():
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		build_ui()
+		build_stage()
+		set_process(false)
+	func send_command(kind, payload):
+		if not pending.is_empty(): return null
+		var id = "ui-test-" + str(received_commands.size())
+		received_commands.append({"type": kind, "payload": payload, "request_id": id})
+		pending[id] = {"command": {"type": kind}, "created_at": Time.get_ticks_msec()}
+		return id
 
 func _initialize():
 	call_deferred("run")
-
 
 func check(condition: bool, message: String):
 	if not condition:
 		failures += 1
 		push_error(message)
 
+func data(hand: Array, version: int) -> Dictionary:
+	return {"type": "match.snapshot", "match_id": "cards", "state_version": version,
+		"viewer_side": "white", "active_side": "white", "status": "active", "can_cast": true,
+		"pieces": [{"id": "white-king", "kind": "k", "side": "white", "square": "e1"},
+			{"id": "own", "kind": "p", "side": "white", "square": "a2"},
+			{"id": "enemy", "kind": "p", "side": "black", "square": "h7"}],
+		"public_effects": [{"id": "shield", "kind": "shield", "piece_id": "enemy", "side": "black"}],
+		"my_hand": hand, "my_mana": 4, "opponent_mana": 3, "my_deck_count": 10,
+		"opponent_hand_count": 3, "legal_moves": ["a2a3"], "clock_ms": {"white": 600000, "black": 600000},
+		"my_traps": [], "revealed_traps": [], "my_discard": [], "draw_offer": null, "tutorial": null}
 
-func run():
-	root.size = Vector2i(1920, 1080)
-	var game = PREVIEW.PreviewGame.new()
-	root.add_child(game)
-	game.animate_moves = false
-	game.cards_row.animate_moves = false
-	for quality in range(3):
-		game.set_graphics_quality(quality)
-		check(game.cards_row.viewport.msaa_3d == [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][quality], "Card quality must follow general graphics settings")
-	var hand = []
-	for id in HAND.IDS:
-		hand.append({"instance_id": id, "definition_id": id})
-		game.cards[id] = {"name": id.replace("_", " ").capitalize(), "mana_cost": 2, "text": "Test spell"}
-	game.cards.arcane_focus.mana_cost = 0
-	game.snapshot = {"viewer_side": "white", "active_side": "white", "status": "active",
-		"pieces": [{"id": "king", "side": "white", "kind": "k", "square": "e1"}],
-		"public_effects": [], "my_hand": hand, "legal_moves": ["e1e2"], "can_cast": true,
-		"my_mana": 5, "opponent_mana": 3, "opponent_hand_count": 3, "my_deck_count": 9,
-		"tutorial": null, "draw_offer": null}
+func fixture(game, id: String):
+	sequence += 2
+	game.pending.clear()
+	game.cards_row.reset()
+	game.snapshot = data([{"instance_id": "active-" + str(sequence), "definition_id": id},
+		{"instance_id": "other", "definition_id": "arcane_draw"}], sequence)
+	game.rendered_version = sequence
 	game.set_connection_state("connected")
 	game.render_snapshot()
 	await process_frame
 	await physics_frame
-	check(game.cards_row.viewport.world_3d != game.viewport.world_3d, "Hand must have its own world")
-	check(game.cards_row.get_parent() == game and game.cards_row.get_global_rect() == game.stage.get_global_rect(), "Hand must overlay the board instead of reserving a row")
-	check(game.cards_row.viewport.transparent_bg, "The game must remain visible between the cards")
-	check(HAND.models.size() == 1 and game.cards_row.holders.size() == 12, "All twelve spells must use ONE shared model")
-	var shared_mesh = null
-	for id in HAND.IDS:
-		var artwork = game.cards_row.holders[id].find_child("Artwork", true, false)
-		check(artwork is MeshInstance3D and artwork.material_override is ShaderMaterial, "Card must expose a replaceable artwork material")
-		if shared_mesh == null:
-			shared_mesh = artwork.mesh
-		check(artwork.mesh == shared_mesh, "Artwork geometry must be shared")
-		check(artwork.material_override.get_shader_parameter("artwork").resource_path.ends_with(id + ".png"), "Each spell must use its own image")
-		check(not game.cards_row.buttons[id].disabled, "Affordable card must be available")
-		check(Rect2(Vector2.ZERO, game.size).encloses(game.cards_row.buttons[id].get_global_rect()), "Full hand must stay visible")
-	var generation = game.cards_row.generation
-	var instance = game.cards_row.holders.arcane_shield.get_instance_id()
-	game.render_snapshot()
-	check(game.cards_row.generation == generation and game.cards_row.holders.arcane_shield.get_instance_id() == instance, "Clock-equivalent updates must not recreate models")
-	game.snapshot.my_hand = hand.slice(0, 3)
-	game.render_snapshot()
-	await process_frame
-	check(is_equal_approx(game.cards_row.card_height, 320), "Full HD cards must be approximately 320px tall")
-	check(game.cards_row.holders.hidden_snare.position.y > game.cards_row.holders.arcane_shield.position.y, "Fan must lift its center")
-	check(game.cards_row.holders.arcane_shield.get_node("CardTitle").text == game.cards.arcane_shield.name and game.cards_row.holders.arcane_shield.get_node("ManaCost").text == "2", "Title and mana must live on the 3D card")
-	var gap_square = find_board_gap(game)
-	check(gap_square != "", "Fixture must include a playable square between the floating cards")
-	if gap_square != "":
-		var gap_point = game.camera.unproject_position(game.world_square(gap_square) + Vector3(0, 0.09, 0))
-		await click_without_motion(game, game.stage.get_global_transform_with_canvas() * gap_point)
-		check(game.selected_square == gap_square and game.selected_card.is_empty(), "Actual clicks between cards must reach the board")
-		check(not game.cards_row.retracted, "Gap picking must work with the hand still expanded")
-	game.clear_selection()
-	await move_pointer(game, game.stage.get_global_rect().position + Vector2(20, 20))
-	check(game.cards_row.retracted, "Idle hand must retract to allow ordinary chess moves")
-	game.clear_selection()
-	check(not game.cards_row.retracted, "Cancel must reopen even when only a board piece was selected")
-	await game._smoke_mouse_click(game.gear_button.get_global_rect().get_center())
-	await click_card(game, "arcane_shield")
-	check(not game.settings_menu.visible and game.selected_card.is_empty(), "Settings must intercept clicks above floating cards")
-	await click_card(game, "arcane_shield")
-	check(game.selected_card.get("instance_id") == "arcane_shield", "Actual mouse click must select the rendered card")
-	check(game.cards_row.holders.arcane_shield.get_meta("outline").visible, "Selection must display the 3D outline")
-	await move_pointer(game, game.stage.get_global_rect().position + Vector2(20, 20))
-	check(game.cards_row.retracted, "Moving toward the board must retract selected cards")
-	var top = game.cards_row.size.y
-	for polygon in game.cards_row.projected_polygons.values():
-		for point in polygon:
-			top = minf(top, point.y)
-	check(absf(game.cards_row.size.y - top - 72) < 4, "Retracted hand must reveal approximately 72px")
-	var strip = game.cards_row.activation_strip()
-	await move_pointer(game, game.cards_row.get_global_transform_with_canvas() * strip.get_center())
-	check(not game.cards_row.retracted, "Hovering the remaining strip must expand the hand")
-	await move_pointer(game, game.stage.get_global_rect().position + Vector2(20, 20))
-	await game._smoke_click_square("e1")
-	check(game.selected_target == {"piece_id": "king"}, "Card target must still use board mouse picking")
-	# The existing Conjurar button in the sidebar confirms the selected card.
-	await game._smoke_mouse_click(game.sidebar_button.get_global_rect().get_center())
-	game.sidebar_scroll.scroll_vertical = 590
-	await process_frame
-	var confirm = find_button(game.sidebar_scroll, "Conjurar no alvo selecionado")
-	game.sidebar_scroll.ensure_control_visible(confirm)
-	await process_frame
-	await process_frame
-	await game._smoke_mouse_click(confirm.get_global_rect().get_center())
-	check(game.received_commands.size() == 1 and game.received_commands[0].kind == "spell.request" and game.received_commands[0].payload == {"card_instance_id": "arcane_shield", "target": {"piece_id": "king"}}, "Confirmation mouse path must preserve spell command")
-	check(not game.cards_row.retracted and game.selected_card.is_empty(), "Confirming must reopen the hand and clear the spell selection")
-	game.snapshot.my_mana = 0
-	game.render_snapshot()
-	check(game.cards_row.buttons.arcane_shield.disabled, "Insufficient mana must disable paid cards")
-	await click_card(game, "arcane_shield")
-	check(game.selected_card.is_empty() and game.selected_square == "", "Unavailable cards must consume clicks without moving pieces behind them")
-	game.snapshot.my_hand = [hand[7]]
-	game.render_snapshot()
-	check(not game.cards_row.buttons.arcane_focus.disabled, "Zero-mana cards must remain usable")
-	await click_card(game, "arcane_focus")
-	check(game.selected_card.get("definition_id") == "arcane_focus", "Mouse must select a free card with zero mana")
-	game.snapshot.can_cast = false
-	game.render_snapshot()
-	check(game.cards_row.buttons.arcane_focus.disabled, "Opponent turn must prevent selection")
-	await click_card(game, "arcane_focus")
-	check(game.selected_card.is_empty(), "Mouse must not select a card on opponent turn")
-	game.snapshot.can_cast = true
-	game.snapshot.my_mana = 5
-	game.snapshot.my_hand = [hand[0], hand[9], hand[10]]
-	game.render_snapshot()
-	check(game.cards_row.holders.size() == 3 and not game.cards_row.holders.has("arcane_focus"), "Draw/removal must replace the authorized hand")
-	for expanded in [true, false]:
-		game.apply_sidebar_visibility(expanded)
-		root.mode = Window.MODE_WINDOWED
-		root.size = Vector2i(1280, 800) if expanded else Vector2i(1920, 1080)
-		await process_frame
-		await process_frame
-		check(not game.cards_row.get_global_rect().intersects(game.gear_button.get_global_rect()), "Hand must not cover footer")
-		await click_card(game, "temporal_boost")
-		check(game.selected_card.get("definition_id") == "temporal_boost", "Resized hand must preserve input mapping")
-	game.clear_selection()
-	game.cards_row.animate_moves = true
-	game.cards_row.select("arcane_shield")
-	await create_timer(0.3).timeout
-	check(is_equal_approx(game.cards_row.holders.arcane_shield.position.y, game.cards_row.rest_positions.arcane_shield.y + 26), "Animated selection must reach its elevation")
-	check(game.cards_row.viewport.render_target_update_mode != SubViewport.UPDATE_ALWAYS, "Idle hand must stop continuous rendering")
-	await move_pointer(game, game.stage.get_global_rect().position + Vector2(20, 20))
-	await create_timer(0.24).timeout
-	check(game.cards_row.retracted and game.cards_row.viewport.render_target_update_mode != SubViewport.UPDATE_ALWAYS, "Animated retraction must finish and stop rendering")
-	await move_pointer(game, game.cards_row.get_global_transform_with_canvas() * game.cards_row.activation_strip().get_center())
-	await create_timer(0.24).timeout
-	check(not game.cards_row.retracted and is_equal_approx(game.cards_row.holders.arcane_shield.position.y, game.cards_row.rest_positions.arcane_shield.y + 26), "Animated hover must restore the selected fan")
-	game.cards_row.select("trap_disarm")
-	game.cards_row.animate_moves = false
-	check(is_equal_approx(game.cards_row.holders.trap_disarm.position.y, game.cards_row.rest_positions.trap_disarm.y + 26) and game.cards_row.viewport.render_target_update_mode != SubViewport.UPDATE_ALWAYS, "Disabling animations must finish selection without continuous rendering")
-	game.snapshot.my_hand = hand.slice(0, 5)
-	game.render_snapshot()
-	for count in [1, 3, 5]:
-		game.snapshot.my_hand = hand.slice(0, count)
-		game.render_snapshot()
-		await process_frame
-		for id in game.cards_row.buttons:
-			check(game.cards_row.get_global_rect().encloses(game.cards_row.buttons[id].get_global_rect()), "Hands of one, three and five must fit inside the game area")
-	game.snapshot.my_hand = hand.slice(0, 5)
-	game.render_snapshot()
-	var stable_generation = game.cards_row.generation
-	var started = Time.get_ticks_usec()
-	for repeat in range(1000):
-		game.cards_row.update_hand(game.snapshot.my_hand, game.cards, true, 5)
-	check(game.cards_row.generation == stable_generation, "Full-hand idle updates must not allocate new models")
-	print("CARD_IDLE_UPDATE_US ", (Time.get_ticks_usec() - started) / 1000.0)
-	if DisplayServer.get_name() != "headless":
-		await create_timer(0.5).timeout
-		await RenderingServer.frame_post_draw
-		for argument in OS.get_cmdline_user_args():
-			if argument.begins_with("--screenshot="):
-				root.get_texture().get_image().save_png(argument.trim_prefix("--screenshot="))
-	print("CARDS: one shared model, 12 images, authorized hand, caching, mouse selection/target/confirmation, availability, resize, animation and idle rendering; failures=", failures)
-	var definitions = game.cards.duplicate(true)
-	game.queue_free()
-	await process_frame
-	if DisplayServer.get_name() != "headless":
-		for argument in OS.get_cmdline_user_args():
-			if argument.begins_with("--gallery="):
-				await gallery(hand, definitions, argument.trim_prefix("--gallery="))
-	quit(0 if failures == 0 else 1)
 
-
-func gallery(hand: Array, definitions: Dictionary, path: String):
-	var rows = VBoxContainer.new()
-	rows.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root.add_child(rows)
-	for index in range(3):
-		var row = HAND.new()
-		row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		rows.add_child(row)
-		row.update_hand(hand.slice(index * 4, index * 4 + 4), definitions, true, 5)
-	await create_timer(0.5).timeout
-	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png(path)
-	rows.queue_free()
-	await process_frame
-
-
-func find_button(node: Node, text_value: String):
-	if node is Button and node.text == text_value:
-		return node
-	for child in node.get_children():
-		var found = find_button(child, text_value)
-		if found != null:
-			return found
-	return null
-
-
-func move_pointer(game, point: Vector2):
+func motion(point: Vector2, held: bool = false):
 	var event = InputEventMouseMotion.new()
 	event.position = point
 	event.global_position = point
-	game.get_viewport().push_input(event, true)
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if held else 0
+	root.push_input(event, true)
 	await process_frame
 	await physics_frame
 
+func button(point: Vector2, pressed: bool, index = MOUSE_BUTTON_LEFT):
+	var event = InputEventMouseButton.new()
+	event.position = point
+	event.global_position = point
+	event.button_index = index
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed and index == MOUSE_BUTTON_LEFT else 0
+	event.pressed = pressed
+	root.push_input(event, true)
+	await physics_frame
+	await process_frame
 
-func find_board_gap(game) -> String:
-	var top = game.cards_row.size.y
-	var left = game.cards_row.size.x
-	var right = 0.0
-	for polygon in game.cards_row.projected_polygons.values():
-		for point in polygon:
-			top = minf(top, point.y)
-			left = minf(left, point.x)
-			right = maxf(right, point.x)
-	for file in "abcdefgh":
-		for rank in "12345678":
-			var square = file + rank
-			var at = game.camera.unproject_position(game.world_square(square) + Vector3(0, 0.09, 0))
-			if at.y < top + 15 or at.x < left or at.x > right:
-				continue
-			var blocked = false
-			for polygon in game.cards_row.projected_polygons.values():
-				if Geometry2D.is_point_in_polygon(at, polygon):
-					blocked = true
-			if not blocked:
-				return square
-	return ""
+func square_point(game, square: String) -> Vector2:
+	var point = game.camera.unproject_position(game.world_square(square) + Vector3(0, 0.09, 0))
+	return game.stage.get_global_transform_with_canvas() * (point * game.stage.size / Vector2(game.viewport.size))
 
+func drag(game, square: String):
+	var hand = game.cards_row
+	await motion(hand.get_global_transform_with_canvas() * hand.activation_strip().get_center())
+	if hand.animate_moves: await create_timer(0.7).timeout
+	var id = str(game.snapshot.my_hand[0].instance_id)
+	var point = hand.buttons[id].get_global_transform_with_canvas() * (hand.buttons[id].size / 2)
+	await motion(point)
+	await button(point, true)
+	check(hand.state == "pressed", "Holding a card must capture the gesture")
+	await motion(point + Vector2(12, -15), true)
+	check(hand.state == "dragging", "8px threshold must start drag")
+	var destination = square_point(game, square) if square != "" else Vector2(2, 2)
+	for step in range(1, 6):
+		await motion(point.lerp(destination, step / 5.0), true)
+	await button(destination, false)
+	await physics_frame
+	await process_frame
 
-func click_card(game, id: String):
-	await move_pointer(game, game.cards_row.get_global_transform_with_canvas() * game.cards_row.activation_strip().get_center())
-	if game.cards_row.animate_moves:
-		await create_timer(0.22).timeout
-	await game._smoke_mouse_click(game.cards_row.buttons[id].get_global_rect().get_center())
-
-
-func click_without_motion(game, point: Vector2):
-	for pressed in [true, false]:
-		var event = InputEventMouseButton.new()
-		event.position = point
-		event.global_position = point
-		event.button_index = MOUSE_BUTTON_LEFT
-		event.pressed = pressed
-		game.get_viewport().push_input(event, true)
-		await physics_frame
+func run():
+	root.size = Vector2i(1920, 1080)
+	var game = DragGame.new()
+	root.add_child(game)
+	game.match_id = "cards"
+	game.connected_match_id = "cards"
+	game.cards_row.animate_moves = false
+	game.animate_moves = false
+	for id in HAND.IDS:
+		game.cards[id] = {"name": id.replace("_", " ").capitalize(), "text": "Spell", "mana_cost": 2}
+	game.cards.arcane_focus.mana_cost = 0
+	# Incremental reconciliation must retain nodes through moves, mana and availability changes.
+	await fixture(game, "frost_bind")
+	var hand = game.cards_row
+	var active = str(game.snapshot.my_hand[0].instance_id)
+	var node_id = hand.holders[active].get_instance_id()
+	var other_id = hand.holders.other.get_instance_id()
+	game.snapshot.my_mana = 3
+	game.snapshot.state_version += 1
+	game.render_snapshot()
+	check(hand.holders[active].get_instance_id() == node_id and hand.holders.other.get_instance_id() == other_id, "Mana or piece updates must not recreate cards")
+	check(hand.holders[active].find_child("outline", true, false) == null, "Purple rectangular outline must not exist")
+	# A slow path out of the activation strip remains within a fixed open envelope.
+	await motion(hand.get_global_transform_with_canvas() * hand.activation_strip().get_center())
+	for y in range(int(hand.size.y) - 35, int(hand.expanded_zone.position.y) + 35, -8):
+		await motion(hand.get_global_transform_with_canvas() * Vector2(hand.size.x / 2, y))
+	check(not hand.retracted, "Moving toward cards must never collapse the hand")
+	var center = hand.buttons[active].get_global_transform_with_canvas() * (hand.buttons[active].size / 2)
+	await motion(center)
+	await button(center, true)
+	await button(center, false)
+	check(hand.state == "selected", "Simple click selects without casting")
+	check(game.received_commands.is_empty(), "Click must not cast")
+	check(is_equal_approx(hand.holders.other.scale.x / (hand.card_height / 1.55), 0.8), "Other cards must shrink to 80 percent")
+	check(is_equal_approx(hand.holders[active].scale.x / (hand.card_height / 1.55), 1.06), "Selected card must grow to 106 percent")
+	await motion(game.stage.get_global_rect().position + Vector2(20, 20))
+	await create_timer(0.3).timeout
+	check(not hand.retracted, "Selection must lock hand open")
+	game.clear_selection()
+	# Every spell goes through actual down/move/up events and the unchanged payload.
+	for id in HAND.IDS:
+		await fixture(game, id)
+		var target_square = "d4"
+		var expected = {}
+		if id in ["arcane_shield", "ward"]:
+			target_square = "a2"
+			expected = {"piece_id": "own"}
+		elif id in ["frost_bind", "shield_break"]:
+			target_square = "h7"
+			expected = {"piece_id": "enemy"}
+		elif id == "dispel":
+			target_square = "h7"
+			expected = {"effect_id": "shield"}
+		elif id in ["hidden_snare", "oracle_eye", "trap_disarm"]:
+			expected = {"square": "d4"}
+		var before = game.received_commands.size()
+		var played = str(game.snapshot.my_hand[0].instance_id)
+		var stable = hand.holders.other.get_instance_id()
+		await drag(game, target_square)
+		check(game.received_commands.size() == before + 1, "Drop must submit once: " + id)
+		if game.received_commands.size() <= before: continue
+		var sent = game.received_commands[-1]
+		check(sent.payload == {"card_instance_id": played, "target": expected}, "Spell target mapping: " + id)
+		check(hand.state == "pending" and hand.holders.has(played) and game.snapshot.my_mana == 4, "No optimistic card or mana consumption")
+		var after = game.snapshot.duplicate(true)
+		after.my_hand = [game.snapshot.my_hand[1]]
+		after.state_version = sequence + 1
+		after.can_cast = false
+		var receipt = {"type": "command.accepted", "request_id": sent.request_id, "state_version": after.state_version}
+		var count = hand.resolution_count
+		if before % 2 == 0:
+			game.handle_message(receipt)
+			check(hand.state == "pending", "Receipt alone must not remove the card")
+			game.handle_message(after)
+		else:
+			game.handle_message(after)
+			check(hand.state == "pending" and hand.holders.has(played), "Snapshot alone must retain reserved visual")
+			game.handle_message(receipt)
+		game.handle_message(receipt)
 		await process_frame
+		await process_frame
+		check(hand.resolution_count == count + 1 and not hand.holders.has(played), "Confirmation must animate/remove once: " + id)
+		check(hand.holders.other.get_instance_id() == stable, "Only the consumed card may disappear")
+	# Rejection and invalid/outside releases restore the same instance.
+	await fixture(game, "frost_bind")
+	active = str(game.snapshot.my_hand[0].instance_id)
+	node_id = hand.holders[active].get_instance_id()
+	var before = game.received_commands.size()
+	await drag(game, "a2")
+	await drag(game, "")
+	check(game.received_commands.size() == before and hand.holders[active].get_instance_id() == node_id, "Invalid drops must return without charge or recreation")
+	await drag(game, "h7")
+	var sent = game.received_commands[-1]
+	game.handle_message({"type": "command.rejected", "request_id": sent.request_id, "state_version": sequence, "code": "STALE_VERSION"})
+	check(hand.pending_request == "" and hand.holders[active].get_instance_id() == node_id, "Rejected commands must restore the reserved instance")
+	# Dissipation ambiguity requires explicit choice, with no command until then.
+	await fixture(game, "dispel")
+	game.snapshot.public_effects.append({"id": "frozen", "kind": "frozen", "piece_id": "enemy", "side": "black"})
+	game.render_snapshot()
+	before = game.received_commands.size()
+	await drag(game, "h7")
+	check(is_instance_valid(game.card_effect_popup) and game.received_commands.size() == before, "Two public effects must require choice")
+	if is_instance_valid(game.card_effect_popup):
+		var choice = game.card_effect_popup.panel.get_child(0).get_child(1)
+		# Native popup receives its own viewport mouse events.
+		var at = choice.get_global_transform_with_canvas() * (choice.size / 2)
+		for pressed in [true, false]:
+			var event = InputEventMouseButton.new()
+			event.position = at
+			event.button_index = MOUSE_BUTTON_LEFT
+			event.pressed = pressed
+			root.push_input(event, true)
+			await process_frame
+		check(game.received_commands.size() == before + 1 and game.received_commands[-1].payload.target == {"effect_id": "frozen"}, "Popup mouse choice must dispatch the chosen effect")
+	# Cancel captured gestures without dispatching, even when the pointer leaves the hand.
+	game.pending.clear()
+	await fixture(game, "frost_bind")
+	before = game.received_commands.size()
+	for cancel_kind in ["escape", "right", "focus", "resize"]:
+		var active_id = str(game.snapshot.my_hand[0].instance_id)
+		await motion(hand.get_global_transform_with_canvas() * hand.activation_strip().get_center())
+		center = hand.buttons[active_id].get_global_transform_with_canvas() * (hand.buttons[active_id].size / 2)
+		await motion(center)
+		await button(center, true)
+		await motion(center + Vector2(20, -30), true)
+		if cancel_kind == "escape":
+			var key = InputEventKey.new()
+			key.keycode = KEY_ESCAPE
+			key.pressed = true
+			root.push_input(key, true)
+		elif cancel_kind == "right":
+			await button(center, true, MOUSE_BUTTON_RIGHT)
+		elif cancel_kind == "focus":
+			root.focus_exited.emit()
+		else:
+			root.mode = Window.MODE_WINDOWED
+			root.size = Vector2i(1280, 800)
+			await create_timer(0.2).timeout
+			await process_frame
+			await process_frame
+		await button(square_point(game, "h7"), false)
+		check(not hand.captured() and game.received_commands.size() == before, "Cancel captured drag: " + cancel_kind)
+	# Black-side picking uses the same authoritative IDs after orbit, zoom and sidebar resize.
+	root.size = Vector2i(1920, 1080)
+	await create_timer(0.2).timeout
+	await fixture(game, "frost_bind")
+	game.snapshot.viewer_side = "black"
+	game.snapshot.pieces[1].side = "black"
+	game.snapshot.pieces[2].side = "white"
+	game.camera_yaw = 0.35
+	game.camera_pitch = 1.0
+	game.camera_distance = 12
+	game.apply_sidebar_visibility(true)
+	game.render_snapshot()
+	await process_frame
+	await process_frame
+	await drag(game, "h7")
+	check(game.received_commands.size() == before + 1 and game.received_commands[-1].payload.target == {"piece_id": "enemy"}, "Black rotated camera must preserve drop targets")
+	game.pending.clear()
+	hand.reset()
+	game.snapshot.viewer_side = "white"
+	game.camera_yaw = 0
+	game.camera_pitch = 0.85
+	game.camera_distance = 11.5
+	game.apply_sidebar_visibility(false)
+	# Continuous spring motion: intermediate frames, reversal and stable node identities.
+	game.pending.clear()
+	hand.reset()
+	await fixture(game, "arcane_shield")
+	game.animate_moves = true
+	hand.animate_moves = true
+	hand.retracted = true
+	hand._retarget()
+	await create_timer(0.7).timeout
+	var start = hand.holders.other.position
+	await motion(hand.get_global_transform_with_canvas() * hand.activation_strip().get_center())
+	await create_timer(0.10).timeout
+	var middle = hand.holders.other.position
+	check(middle.distance_to(start) > 1 and middle.distance_to(hand.poses.other.position) > 1, "Opening must have intermediate visible frames")
+	await motion(game.stage.get_global_rect().position + Vector2(10, 10))
+	await create_timer(0.1).timeout
+	check(not hand.retracted, "Closing must wait 250ms")
+	await create_timer(0.22).timeout
+	check(hand.retracted, "Hand must close after dwell outside fixed zone")
+	await motion(hand.get_global_transform_with_canvas() * hand.activation_strip().get_center())
+	await create_timer(0.7).timeout
+	check(not hand.retracted and hand.holders.other.position.distance_to(hand.poses.other.position) < 0.3, "Reversal must settle smoothly")
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--screenshot=") and DisplayServer.get_name() != "headless":
+			await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png(argument.trim_prefix("--screenshot="))
+	print("CARDS: stable nodes/zones, spring motion, selection scales, 12 real mouse drags, targets, popup, receipts both orders, rejection and single resolution; failures=", failures)
+	game.queue_free()
+	await process_frame
+	quit(0 if failures == 0 else 1)

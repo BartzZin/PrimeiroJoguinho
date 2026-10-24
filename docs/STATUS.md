@@ -41,3 +41,5 @@
 
 Ferramentas não criam inicialização automática no Windows. Docker Desktop foi mantido com `AutoStart=false`; serviço Docker em modo Manual; containers locais usam `restart: no`.
 
+
+- Interação de cartas: zonas fixas, amortecimento, reconciliação incremental, seleção em 106%/80% e uso por arrastar/soltar. Confirmação por request_id + snapshot, sem consumo otimista, com regressões de gestos das 12 cartas e testes Windows de congelamento, armadilha e reconexão.
