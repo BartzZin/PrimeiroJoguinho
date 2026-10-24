@@ -20,6 +20,7 @@
 - Indicador de conexão separado das ações, confirmação pelo primeiro snapshot, prazo de 10 segundos e três reconexões automáticas; reenvio mantém o identificador do comando.
 - Barra lateral recolhível pelo botão ☰ ao lado da engrenagem, inicialmente oculta, com preferência por perfil e preservação de campos, seleção e rolagem; regressões de cliques com ambos os layouts.
 - Cartas físicas 3D com uma única malha compartilhada e 12 imagens de face; mundo e iluminação próprios, seleção elevada, cache e renderização somente quando necessário. Base gerada pelo Modelador3d oficial e preparada para texturas substituíveis; instruções em `AGENTS.md` e `art/cards/README.md`.
+- Mão flutuante transparente em leque, cartas de aproximadamente 320 px em Full HD, nome e mana nas faces e região inferior preparada para mais texto. Recolhimento/expansão pelo mouse libera movimentos e alvos, sem faixa separada; testes cobrem cliques entre polígonos, cartas bloqueadas e prioridade dos menus.
 - Engrenagem no rodapé com logs detalhados como primeiro checkbox; preferências locais separadas das sessões, qualidade, animações, visão superior e tela cheia.
 - Logs estruturados do cliente com captura de erros de scripts, rotação, proteção de dados e escrita concorrente; inicializador e servidor também possuem registros operacionais.
 

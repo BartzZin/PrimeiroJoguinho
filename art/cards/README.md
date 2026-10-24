@@ -4,6 +4,8 @@ Existe **um modelo de carta em produção**: `client-godot/assets/cards/models/c
 As 12 magias mudam apenas a imagem da face; corpo, moldura e malhas são compartilhados.
 Nome, custo e descrição continuam como texto acessível do Godot.
 
+A mão é uma sobreposição transparente ao tabuleiro, sem faixa de fundo ou espaço reservado no layout. As cartas ficam em leque, com cerca de 320 px em Full HD; nome e mana são `Label3D` presos à face e a ilustração deixa espaço inferior para texto futuro. A descrição permanece no tooltip. O mouse sobre o tabuleiro recolhe a mão a 72 px visíveis; passar nas bordas reabre. Transições de 180 ms respeitam a opção de animações. As áreas clicáveis seguem os polígonos projetados, permitindo clicar no jogo entre cartas; menus e rodapé permanecem acima/fora da mão.
+
 ## Origem e preparação
 
 - Modelador oficial: `C:\Projetos\Modelador3d`, imagem congelada `trellis2-rtx5060:isolated-v1`.

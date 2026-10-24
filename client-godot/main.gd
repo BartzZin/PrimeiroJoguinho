@@ -263,7 +263,8 @@ func build_ui():
 	stage.custom_minimum_size = Vector2(500, 340)
 	main_column.add_child(stage)
 	stage.gui_input.connect(board_input)
-	stage.resized.connect(func(): queued_picks.clear())
+	stage.resized.connect(func(): queued_picks.clear(); layout_hand_overlay.call_deferred())
+	stage.item_rect_changed.connect(func(): layout_hand_overlay.call_deferred())
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(900, 650)
 	viewport.world_3d = World3D.new()
@@ -271,9 +272,10 @@ func build_ui():
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	stage.add_child(viewport)
 	info_label = label("Entre com um convite para criar uma sala ou iniciar o tutorial.", main_column)
+	main_column.move_child(info_label, 2)
 	cards_row = CARD_HAND.new()
 	cards_row.card_selected.connect(select_card)
-	main_column.add_child(cards_row)
+	add_child(cards_row)
 	var scroll = ScrollContainer.new()
 	sidebar_scroll = scroll
 	scroll.visible = preferences.values.sidebar_visible
@@ -354,6 +356,13 @@ func build_ui():
 	settings_menu.setting_changed.connect(change_setting)
 	settings_menu.open_logs_requested.connect(open_logs_folder)
 	add_child(settings_menu)
+	layout_hand_overlay.call_deferred()
+
+
+func layout_hand_overlay():
+	if is_instance_valid(cards_row) and is_instance_valid(stage):
+		cards_row.position = get_global_transform().affine_inverse() * stage.global_position
+		cards_row.size = stage.size
 
 
 func apply_ui_theme():
@@ -1061,6 +1070,7 @@ func cast_selected():
 	if selected_card.is_empty():
 		return
 	send_command("spell.request", {"card_instance_id": selected_card.instance_id, "target": selected_target})
+	clear_selection()
 
 
 func confirm_resign():
@@ -1091,11 +1101,16 @@ func load_history():
 			label(str(event.seq) + " • " + event.type + " " + str(event.get("move", event.get("card", event.get("reason", "")))), history_box, 14)
 
 
-func _smoke_mouse_click(position):
+func _smoke_pointer(position):
 	var motion = InputEventMouseMotion.new()
 	motion.position = position
 	motion.global_position = position
 	get_viewport().push_input(motion, true)
+	await get_tree().process_frame
+
+
+func _smoke_mouse_click(position):
+	await _smoke_pointer(position)
 	for pressed in [true, false]:
 		var event = InputEventMouseButton.new()
 		event.button_index = MOUSE_BUTTON_LEFT
@@ -1111,6 +1126,13 @@ func _smoke_mouse_click(position):
 func _smoke_click_square(square):
 	var point = camera.unproject_position(world_square(square) + Vector3(0, 0.09, 0))
 	var local = point * stage.size / Vector2(viewport.size)
+	# Follow a real mouse path through free board space when the hand covers the target.
+	for polygon in cards_row.projected_polygons.values():
+		if not cards_row.retracted and Geometry2D.is_point_in_polygon(local, polygon):
+			await _smoke_pointer(stage.get_global_transform_with_canvas() * Vector2(12, 12))
+			if cards_row.animate_moves:
+				await get_tree().create_timer(0.22).timeout
+			break
 	await _smoke_mouse_click(stage.get_global_transform_with_canvas() * local)
 
 
@@ -1157,6 +1179,9 @@ func smoke_test(path):
 	deadline = Time.get_ticks_msec() + 15000
 	while (snapshot.state_version < int(data.get("expected_version", 0)) or connection_state != "connected" or not pending.is_empty()) and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.2).timeout
+	if not cards_row.holders.is_empty():
+		await _smoke_pointer(cards_row.get_global_transform_with_canvas() * cards_row.activation_strip().get_center())
+		await get_tree().create_timer(0.22).timeout
 	if data.get("show_settings", false):
 		await _smoke_mouse_click(gear_button.get_global_rect().get_center())
 		await get_tree().process_frame
