@@ -43,6 +43,10 @@ jobs:
       - run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/diagnostics.gd
       - name: Stable hand, captured drags and command lifecycle
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/cards.gd
+      - name: Celestial arena, inspection camera and collision isolation
+        run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/arena.gd
+      - name: Graphics presets, internal resolution and native mouse coordinates
+        run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path client-godot --script res://tests/graphics.gd
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

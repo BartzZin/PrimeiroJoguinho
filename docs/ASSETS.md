@@ -1,5 +1,7 @@
 # Origem dos ativos
 
+- Arena celestial 360°: referências originais geradas com `imagegen`, quatro módulos produzidos no Modelador3d oficial e arquitetura de medidas precisas preparada no Blender. Fontes detalhadas, parâmetros, comparação 12/24 passos e revisão em doze ângulos ficam em `art/arena/`; fontes pesadas `*-source.glb` usam Git LFS. Recursos finais em `client-godot/assets/arena/`, com atlas embutidos/comprimidos e mapas normais. O material do cristal foi corrigido no Godot para recuperar o azul/vermelho da referência, preservando os originais. Céu, mármore, água e bandeiras usam shaders originais. Consulte [procedência e reprodução](../art/arena/README.md).
+
 - Doze miniaturas `.glb`: fornecidas pelo proprietário em `Models/Xadrez_final.rar`, incorporadas em 20/10/2026. Os arquivos foram copiados sem alterações para `client-godot/assets/models/blue` e `red`; cores, texturas de superfície e mapas normais permanecem nos materiais importados.
 - Mapeamento: `Peao → pawn`, `Torre → rook`, `Cavalo → knight`, `Bispo → bishop`, `Rainha → queen`, `Rei → king`. Azul representa Solar/brancas; vermelho representa Lunar/pretas. A ordem inicial continua sendo torre, cavalo, bispo, dama, rei, bispo, cavalo, torre.
 - `client-godot/piece_models.gd` ajusta escala, base, centralização e orientação em tempo de execução. As bases ficam sobre o tabuleiro e cada silhueta ocupa no máximo 0,84 de uma casa. Promoções usam o modelo correspondente do mesmo exército.

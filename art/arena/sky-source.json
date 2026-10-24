@@ -1,0 +1,21 @@
+{
+  "asset": "kloppenheim_03_puresky",
+  "page": "https://polyhaven.com/a/kloppenheim_03_puresky",
+  "authors": [
+    "Greg Zaal",
+    "Jarod Guest"
+  ],
+  "license": "CC0-1.0",
+  "files": {
+    "1k": {
+      "size": 1428760,
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloppenheim_03_puresky_1k.hdr",
+      "md5": "4398fb83b085aed97cef788cda6f9e2d"
+    },
+    "4k": {
+      "size": 19682492,
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/kloppenheim_03_puresky_4k.hdr",
+      "md5": "09c9e57a51e6eed81ac70e194d58eab2"
+    }
+  }
+}

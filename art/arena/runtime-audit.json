@@ -1,0 +1,30 @@
+{
+  "pillar": {
+    "triangles": 24000,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0,
+    "degenerate_faces": 0,
+    "normal_maps": 1
+  },
+  "castle": {
+    "triangles": 40000,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0,
+    "degenerate_faces": 0,
+    "normal_maps": 1
+  },
+  "island": {
+    "triangles": 23980,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0,
+    "degenerate_faces": 0,
+    "normal_maps": 1
+  },
+  "crystal": {
+    "triangles": 24000,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0,
+    "degenerate_faces": 0,
+    "normal_maps": 1
+  }
+}

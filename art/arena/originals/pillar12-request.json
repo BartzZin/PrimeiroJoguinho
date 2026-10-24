@@ -1,0 +1,14 @@
+{
+  "job_id": "5f5931e7-9065-46c2-a0ee-bcbb1192e161",
+  "source_name": "pillar.png",
+  "created_at": 1792862497.1212194,
+  "settings": {
+    "resolution": "512",
+    "seed": 42,
+    "steps": 12,
+    "texture_size": 4096,
+    "decimation_target": 120000,
+    "preserve_details": false,
+    "continuous_surface": true
+  }
+}

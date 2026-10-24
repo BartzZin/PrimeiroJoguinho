@@ -7,5 +7,8 @@
 *.cmd text eol=crlf
 *.glb binary
 *.png binary
+*.hdr binary
+*.exr binary
 *.wav binary
 *.exe binary
+art/arena/originals/*-source.glb filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,55 @@
+{
+  "requested_resolution": "512",
+  "settings": {
+    "resolution": "512",
+    "seed": 42,
+    "steps": 12,
+    "texture_size": 4096,
+    "decimation_target": 120000,
+    "preserve_details": false,
+    "continuous_surface": true
+  },
+  "models_loaded": [
+    "shape_slat_decoder",
+    "tex_slat_decoder",
+    "sparse_structure_flow_model",
+    "sparse_structure_decoder",
+    "shape_slat_flow_model_512",
+    "tex_slat_flow_model_512"
+  ],
+  "device": "NVIDIA GeForce RTX 5060",
+  "models_loaded_this_attempt": [
+    "shape_slat_decoder",
+    "tex_slat_decoder",
+    "sparse_structure_flow_model",
+    "sparse_structure_decoder",
+    "shape_slat_flow_model_512",
+    "tex_slat_flow_model_512"
+  ],
+  "packages": {
+    "torch": "2.8.0+cu128",
+    "transformers": "5.20.2",
+    "gradio": "6.0.1",
+    "flex_gemm": "1.0.0",
+    "trimesh": "5.1.1"
+  },
+  "timings": {
+    "load_seconds": 64.19826539399946,
+    "sampling_seconds": 55.13228401299966,
+    "generation_seconds": 94.32454616299947
+  },
+  "effective_resolution": 512,
+  "surface_repair": {
+    "voxel": 0.003,
+    "faces": 119998,
+    "vertices": 59904,
+    "boundary_edges": 6,
+    "nonmanifold_edges": 6,
+    "texture": 4096,
+    "seconds": 14.842010522001146
+  },
+  "error": "Superficie final ainda possui bordas abertas ou nao manifold; resultado nao publicado.",
+  "failed_stage": "Reconstruindo superficie continua e transferindo cores",
+  "peak_rss_mib": 16901.75,
+  "worker_seconds": 226.62475296699995
+}

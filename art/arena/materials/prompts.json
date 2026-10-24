@@ -1,0 +1,6 @@
+{
+  "tool": "imagegen / built-in image_gen",
+  "asset": "client-godot/assets/arena/limestone.png",
+  "usage": "Surface albedo material; procedural bump and roughness are derived in the game shader.",
+  "prompt": "Game PBR material albedo texture, not a modeling reference or a scene: a perfectly flat orthographic seamless tileable square expanse of ancient warm grey limestone with subtle natural marble veins, small pores, very fine weathering, slight mineral color variation and hairline micro cracks. Photorealistic surface detail, restrained medium grey beige color, avoid pure white and black, realistic physically plausible diffuse reflectance. Entire image is continuous stone texture edge to edge, even diffuse lighting, NO directional shadows, NO specular highlights, NO perspective, NO grout, NO tiles or repeating shapes, NO text, NO border, NO props. Fine detail must remain natural rather than stylized. This will be tiled on a 3D game arena floor; prioritize subtle scale and realism."
+}

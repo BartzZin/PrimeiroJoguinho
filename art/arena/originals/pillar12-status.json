@@ -1,0 +1,12 @@
+{
+  "status": "failed",
+  "stage": "Reconstruindo superficie continua e transferindo cores",
+  "updated_at": 1792862725.983666,
+  "error": "Superficie final ainda possui bordas abertas ou nao manifold; resultado nao publicado.",
+  "worker_exited": true,
+  "recoverable": true,
+  "effective_resolution": 512,
+  "worker_pid": 27,
+  "worker_exit_code": 1,
+  "elapsed_seconds": 228.81
+}

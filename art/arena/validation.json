@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-24",
+  "version": "0.1.6",
+  "windows_version": "0.1.6.0",
+  "binary_sha256": "7ae856abf018e7f21629f254f2d228b125c472eaa35c20605fdb1ff3d2ca9a93",
+  "binary_bytes": 294081672,
+  "server_tests": {
+    "passed": 42,
+    "skipped": 1,
+    "skip_reason": "PostgreSQL concurrency is enabled separately by CI"
+  },
+  "client_tests": [
+    "models",
+    "pieces (1785 checks)",
+    "cards (12 real mouse drags)",
+    "diagnostics",
+    "arena",
+    "graphics"
+  ],
+  "gui_scenarios": [
+    "Full HD",
+    "1280x800",
+    "sidebar shown/hidden",
+    "Esc/I/Home/F11",
+    "both player views",
+    "orbit/zoom",
+    "three quality levels",
+    "native UI with scaled 3D"
+  ],
+  "runtime_models": {
+    "pillar": {
+      "triangles": 24000,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "degenerate_faces": 0,
+      "normal_maps": 1
+    },
+    "castle": {
+      "triangles": 40000,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "degenerate_faces": 0,
+      "normal_maps": 1
+    },
+    "island": {
+      "triangles": 23980,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "degenerate_faces": 0,
+      "normal_maps": 1
+    },
+    "crystal": {
+      "triangles": 24000,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "degenerate_faces": 0,
+      "normal_maps": 1
+    }
+  },
+  "windows_clients": [
+    "frost_bind with reconnect",
+    "hidden_snare with reconnect and opponent privacy"
+  ],
+  "renderers_tested": [
+    "Vulkan Forward+",
+    "OpenGL 3.3 Compatibility"
+  ],
+  "measured_gpu": "NVIDIA GeForce RTX 5060",
+  "unmeasured_targets": [
+    "GTX 1050",
+    "GTX 1650",
+    "8 GB system RAM"
+  ],
+  "reflection_atlas_limit": 4,
+  "windows_startup_changes": false,
+  "known_warning": "Godot reports 7 texture RIDs at shutdown after Vulkan local reflection capture; fresh Performance profile and OpenGL do not show it."
+}

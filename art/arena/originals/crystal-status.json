@@ -1,0 +1,13 @@
+{
+  "status": "succeeded",
+  "stage": "GLB salvo; encerrando gerador",
+  "updated_at": 1792863821.3897145,
+  "error": null,
+  "worker_exited": true,
+  "recoverable": true,
+  "effective_resolution": 512,
+  "glb": "/app/outputs/jobs/cf49f7be-45be-48ba-9aa2-7ed3335454e0/model.glb",
+  "worker_pid": 1043,
+  "worker_exit_code": 0,
+  "elapsed_seconds": 222.367
+}

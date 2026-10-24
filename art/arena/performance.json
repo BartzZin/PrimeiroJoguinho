@@ -1,0 +1,77 @@
+{
+  "adapter": "NVIDIA GeForce RTX 5060",
+  "renderer": "forward_plus",
+  "resolution": "1920x1080",
+  "pieces": 32,
+  "cards": 5,
+  "date": "2026-10-24",
+  "engine": "Godot 4.7.2",
+  "game_fps_limit": 60,
+  "benchmark_fps_limit": 0,
+  "vsync": false,
+  "fresh_process_per_quality": true,
+  "target_gpus_not_physically_tested": [
+    "GTX 1050",
+    "GTX 1650"
+  ],
+  "memory_note": "Godot renderer counters, not whole-driver VRAM. Single client, no model generation running.",
+  "scenarios": [
+    "32 idle animated pieces",
+    "five native-resolution cards",
+    "four fixed views",
+    "continuous orbit with e2e4/e7e5 presentation updates"
+  ],
+  "profiles": [
+    {
+      "average_fps": 709.738599330874,
+      "frames": 360,
+      "lod_threshold": 5.0,
+      "max_draw_calls": 322,
+      "max_frame_ms": 1.639,
+      "max_primitives": 1360110,
+      "orbit_max_ms": 1.807,
+      "orbit_p95_ms": 1.481,
+      "p95_frame_ms": 1.461,
+      "quality": 0,
+      "render_scale": 0.670000016689301,
+      "renderer_texture_mib": 568.8427734375,
+      "renderer_video_mib": 808.087173461914,
+      "shadow_primitives": 619238,
+      "visible_primitives": 742226
+    },
+    {
+      "average_fps": 435.167847865321,
+      "frames": 360,
+      "lod_threshold": 2.5,
+      "max_draw_calls": 321,
+      "max_frame_ms": 2.592,
+      "max_primitives": 2050718,
+      "orbit_max_ms": 2.502,
+      "orbit_p95_ms": 2.396,
+      "p95_frame_ms": 2.397,
+      "quality": 1,
+      "render_scale": 0.850000023841858,
+      "renderer_texture_mib": 656.46484375,
+      "renderer_video_mib": 915.960830688477,
+      "shadow_primitives": 928956,
+      "visible_primitives": 1120376
+    },
+    {
+      "average_fps": 241.995169507533,
+      "frames": 360,
+      "lod_threshold": 1.0,
+      "max_draw_calls": 546,
+      "max_frame_ms": 4.608,
+      "max_primitives": 5247326,
+      "orbit_max_ms": 4.546,
+      "orbit_p95_ms": 4.38,
+      "p95_frame_ms": 4.395,
+      "quality": 2,
+      "render_scale": 1.0,
+      "renderer_texture_mib": 881.19970703125,
+      "renderer_video_mib": 1145.96943664551,
+      "shadow_primitives": 3743070,
+      "visible_primitives": 1502870
+    }
+  ]
+}

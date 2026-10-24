@@ -1,0 +1,14 @@
+{
+  "job_id": "cf49f7be-45be-48ba-9aa2-7ed3335454e0",
+  "source_name": "crystal.png",
+  "created_at": 1792863598.9538732,
+  "settings": {
+    "resolution": "512",
+    "seed": 42,
+    "steps": 24,
+    "texture_size": 4096,
+    "decimation_target": 120000,
+    "preserve_details": false,
+    "continuous_surface": true
+  }
+}

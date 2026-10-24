@@ -48,9 +48,9 @@ func run():
 	game.animate_moves = false
 	check(ProjectSettings.get_setting("display/window/size/viewport_width") == 1920 and ProjectSettings.get_setting("display/window/size/viewport_height") == 1080, "Default presentation must be Full HD")
 	game.set_graphics_quality(0)
-	check(not game.directional_light.shadow_enabled and not game.stage_environment.ssao_enabled, "Low quality must disable expensive effects")
+	check(game.directional_light.shadow_enabled and game.directional_light.directional_shadow_max_distance <= 22 and not game.stage_environment.ssao_enabled, "Performance must retain inexpensive near shadows without SSAO")
 	game.set_graphics_quality(2)
-	check(game.viewport.msaa_3d == Viewport.MSAA_4X and game.stage_environment.ssao_enabled and game.directional_light.shadow_enabled, "High quality must restore antialiasing, contact shadows and lighting shadows")
+	check(game.viewport.msaa_3d == Viewport.MSAA_4X and game.stage_environment.ssao_enabled == (RenderingServer.get_current_rendering_method() == "forward_plus") and game.directional_light.shadow_enabled, "High quality must restore supported antialiasing, contact shadows and lighting shadows")
 	game.snapshot = {
 		"viewer_side": "white", "active_side": "white", "status": "active",
 		"pieces": [], "public_effects": [], "my_hand": [], "legal_moves": ["e2e4"],

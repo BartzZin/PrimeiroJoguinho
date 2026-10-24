@@ -40,8 +40,9 @@ Para apenas iniciar o backend: `./tools/Start-Dev.ps1`. Para abrir um cliente: `
 - As cartas usam um modelo físico 3D compartilhado, com imagens intercambiáveis, e flutuam sobre o jogo em um leque de aproximadamente 320 px de altura em Full HD. Nome e mana ficam dentro da face. A faixa inferior abre a mão, que permanece estável enquanto você escolhe uma carta. Fora da área expandida, aguarda 250 ms antes de recolher. Selecionar amplia a carta e reduz as outras, sem moldura roxa externa. As transições amortecidas respeitam a preferência de animações. A carta só é consumida após a confirmação do servidor; em rejeição, retorna à mão.
 - Faça o movimento depois da carta. Existe uma única conjuração por turno.
 - Botão direito arrastado gira a câmera; roda do mouse aproxima; há opção de visão superior.
+- A arena celestial é um mundo 3D em 360°, com reinos fixos, ilhas, pontes, cachoeiras e céu envolvente. **I** ou **Inspecionar cenário**, na engrenagem, permite olhar livremente com o botão direito; durante a inspeção, ações da partida ficam bloqueadas. **I**, **Esc** ou **Voltar ao tabuleiro** restauram a câmera anterior; **Home** retorna ao enquadramento inicial. Menus têm prioridade sobre Esc. A preferência de animações também controla bandeiras, água e nuvens.
 - O botão **☰**, ao lado da engrenagem no rodapé, mostra ou oculta toda a barra lateral (conexão, salas, tutorial, ações, histórico e catálogo). Ela começa oculta; sua escolha é salva por perfil. Ao recolher, o tabuleiro e as cartas ocupam o espaço liberado.
-- A qualidade alta usa o renderizador Forward+, suavização 4×, sombras e oclusão ambiente. Na **engrenagem do canto inferior direito**, as opções Médio e Baixo reduzem esses efeitos. O mesmo menu reúne animações, visão superior e tela cheia.
+- Na **engrenagem**, use **Desempenho** como referência para GTX 1050/2 GB e **Equilibrado** para GTX 1650/4 GB. Novos perfis usam detecção automática; escolhas manuais existentes são preservadas. A escala interna reduz o custo do cenário e mantém cartas/textos nítidos. **Mostrar FPS** ativa o contador no rodapé; **Copiar diagnóstico gráfico** facilita conferir a placa e o perfil usados. [Guia de gráficos e medições](docs/GRAPHICS.md).
 - O tutorial ensina movimento, defesa e armadilha usando cenários do servidor.
 - O relógio continua durante animações, escolhas e desconexões individuais. Falha/reinício do servidor anula partidas em andamento.
 
@@ -73,6 +74,8 @@ Os registros não incluem tokens, convites, códigos de sala, senhas, mãos, arm
 O teste de concorrência PostgreSQL usa `TEST_DATABASE_URL`, apontado para um banco isolado; CI já o configura. O executável exportado fica em `exports/windows/XadrezArcano.exe` e precisa do servidor ativo. A build não inclui servidor offline.
 
 As regressões Godot estão em `client-godot/tests/`: seleção por eventos reais de mouse, configurações, rotação dos logs e estados de conexão. O teste de diagnóstico provoca um erro de script e uma pasta inacessível de propósito para verificar sua captura; essas mensagens são esperadas somente nesse teste.
+
+O teste `res://tests/arena.gd` verifica cenário persistente, câmera de inspeção e cliques dos dois lados. Com renderização real, `-- --capture=C:/caminho/de/saida` salva quatro vistas e o céu. Recursos, parâmetros de geração e revisão dos modelos estão em [art/arena/README.md](art/arena/README.md).
 
 Backups são cifrados com `BACKUP_KEY` de `.env`. Guarde essa chave separadamente: sem ela o backup não pode ser aberto. Restauração segura: `./tools/Restore-Backup.ps1 -File backups/arquivo.fernet`, sempre num banco novo `arcano_restore...`.
 

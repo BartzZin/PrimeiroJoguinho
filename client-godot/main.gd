@@ -9,6 +9,9 @@ const PREFERENCES = preload("res://preferences.gd")
 const SETTINGS_MENU = preload("res://settings_menu.gd")
 const CARD_HAND = preload("res://card_hand.gd")
 const CARD_TARGETS = preload("res://card_targets.gd")
+const ARENA = preload("res://arena_environment.gd")
+const ARENA_CAMERA = preload("res://arena_camera.gd")
+const GRAPHICS = preload("res://graphics_profile.gd")
 const CONNECTION_TIMEOUT_MS = 10000
 const RETRY_DELAYS_MS = [2000, 4000, 8000]
 const EFFECT_NAMES = {"shield": "escudo", "frozen": "imobilização", "ward": "proteção rúnica", "silence": "silêncio"}
@@ -73,12 +76,23 @@ var animate_moves: bool = true:
 			pieces_root.set_animations_enabled(value)
 		if is_instance_valid(cards_row):
 			cards_row.animate_moves = value
+		if is_instance_valid(arena):
+			arena.animation_enabled = value
 var camera_yaw = 0.0
-var camera_pitch = 0.85
-var camera_distance = 11.5
+var camera_pitch = 0.36
+var camera_distance = 12.8
 var connected_match_id = ""
 var directional_light: DirectionalLight3D
 var stage_environment: Environment
+var arena: Node3D
+var inspection = ARENA_CAMERA.new()
+var inspection_bar: HBoxContainer
+var graphics_level = 2
+var fps_label: Label
+var next_fps_update = 0
+var tile_material_cache = {}
+var game_hud: PanelContainer
+var hud_title: Label
 
 
 func _ready():
@@ -163,6 +177,8 @@ func apply_preferences():
 	pieces_root.set_sounds_enabled(preferences.values.sound_effects)
 	top_view = preferences.values.top_view
 	set_graphics_quality(preferences.values.quality)
+	fps_label.visible = preferences.values.show_fps
+	arena.animation_enabled = animate_moves
 	position_camera()
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if preferences.values.fullscreen else DisplayServer.WINDOW_MODE_MAXIMIZED)
@@ -179,13 +195,18 @@ func change_setting(key, value):
 			diagnostics.detailed = value
 			if value:
 				log_event("INFO", "detailed_logging_enabled")
-	elif key == "quality":
-		set_graphics_quality(value)
+	elif key in ["quality", "render_scale", "shadows"]:
+		set_graphics_quality(preferences.values.quality)
+	elif key == "show_fps":
+		fps_label.visible = value
 	elif key == "animations":
 		animate_moves = value
+		arena.animation_enabled = value
 	elif key == "sound_effects":
 		pieces_root.set_sounds_enabled(value)
 	elif key == "top_view":
+		if inspection.inspecting:
+			toggle_inspection()
 		top_view = value
 		position_camera()
 	elif key == "fullscreen" and DisplayServer.get_name() != "headless":
@@ -270,8 +291,6 @@ func build_ui():
 	var main_column = VBoxContainer.new()
 	main_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	layout.add_child(main_column)
-	label("XADREZ ARCANO   /   ALPHA", main_column, 26)
-	clocks_label = label("SOLAR · AZUL  10:00     •     LUNAR · VERMELHO  10:00", main_column, 23)
 	stage = SubViewportContainer.new()
 	stage.stretch = true
 	stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -286,15 +305,43 @@ func build_ui():
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	stage.add_child(viewport)
-	info_label = label("Entre com um convite para criar uma sala ou iniciar o tutorial.", main_column)
-	main_column.move_child(info_label, 2)
+	game_hud = PanelContainer.new()
+	game_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hud_style = StyleBoxFlat.new()
+	hud_style.bg_color = Color(0.025,0.045,0.075,0.88)
+	hud_style.border_color = Color(0.66,0.49,0.24,0.6)
+	hud_style.set_border_width_all(1)
+	hud_style.set_corner_radius_all(8)
+	hud_style.set_content_margin_all(12)
+	game_hud.add_theme_stylebox_override("panel",hud_style)
+	var hud_rows = VBoxContainer.new()
+	hud_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	game_hud.add_child(hud_rows)
+	var hud_heading = HBoxContainer.new()
+	hud_heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_heading.add_theme_constant_override("separation",24)
+	hud_rows.add_child(hud_heading)
+	hud_title = label("XADREZ ARCANO",hud_heading,18)
+	hud_title.modulate = Color("d9c391")
+	hud_title.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hud_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clocks_label = label("SOLAR · AZUL  10:00     •     LUNAR · VERMELHO  10:00",hud_heading,20)
+	clocks_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	clocks_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	clocks_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clocks_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info_label = label("Entre com um convite ou abra o tutorial pelo menu ☰.",hud_rows,16)
+	info_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	info_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(game_hud)
 	cards_row = CARD_HAND.new()
 	cards_row.card_selected.connect(select_card)
 	cards_row.drag_updated.connect(_card_drag_updated)
 	cards_row.card_dropped.connect(_card_dropped)
 	cards_row.interaction_cancelled.connect(_card_cancelled)
 	cards_row.spell_resolved.connect(_card_resolved)
-	cards_row.input_blocked = func(): return is_instance_valid(settings_menu) and settings_menu.visible or is_instance_valid(card_effect_popup) and card_effect_popup.visible
+	cards_row.input_blocked = func(): return inspection.inspecting or is_instance_valid(settings_menu) and settings_menu.visible or is_instance_valid(card_effect_popup) and card_effect_popup.visible
 	add_child(cards_row)
 	var scroll = ScrollContainer.new()
 	sidebar_scroll = scroll
@@ -353,6 +400,11 @@ func build_ui():
 	status_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fps_label = label("FPS —", footer, 14)
+	fps_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	fps_label.custom_minimum_size.x = 132
+	fps_label.tooltip_text = "Taxa e intervalo médio dos quadros; não é latência de rede."
+	fps_label.visible = preferences.values.show_fps
 	sidebar_button = Button.new()
 	sidebar_button.name = "SidebarToggle"
 	sidebar_button.custom_minimum_size = Vector2(44, 44)
@@ -375,6 +427,20 @@ func build_ui():
 	settings_menu.anchor_button = gear_button
 	settings_menu.setting_changed.connect(change_setting)
 	settings_menu.open_logs_requested.connect(open_logs_folder)
+	settings_menu.inspection_requested.connect(toggle_inspection)
+	settings_menu.graphics_report_requested.connect(copy_graphics_report)
+	inspection_bar = HBoxContainer.new()
+	inspection_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	inspection_bar.size = Vector2(650,44)
+	inspection_bar.add_theme_constant_override("separation", 12)
+	var inspection_hint = label("INSPEÇÃO • botão direito para olhar", inspection_bar, 17)
+	inspection_hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+	inspection_hint.add_theme_color_override("font_shadow_color", Color("071327"))
+	inspection_hint.add_theme_constant_override("shadow_offset_x", 1)
+	inspection_hint.add_theme_constant_override("shadow_offset_y", 1)
+	button("Voltar ao tabuleiro (I)", inspection_bar, toggle_inspection)
+	inspection_bar.hide()
+	add_child(inspection_bar)
 	add_child(settings_menu)
 	layout_hand_overlay.call_deferred()
 
@@ -383,6 +449,16 @@ func layout_hand_overlay():
 	if is_instance_valid(cards_row) and is_instance_valid(stage):
 		cards_row.position = get_global_transform().affine_inverse() * stage.global_position
 		cards_row.size = stage.size
+		if is_instance_valid(game_hud):
+			var hud_width = minf(stage.size.x-32,1120)
+			game_hud.position = cards_row.position + Vector2((stage.size.x-hud_width)/2,12)
+			game_hud.size = Vector2(hud_width,76)
+			hud_title.visible = stage.size.x >= 900
+			clocks_label.add_theme_font_size_override("font_size",20 if stage.size.x > 1000 else 14)
+		if is_instance_valid(inspection_bar):
+			inspection_bar.position = cards_row.position + Vector2(12, 100)
+			inspection_bar.get_child(0).visible = stage.size.x > 760
+			inspection_bar.size = Vector2(minf(stage.size.x-24,650),44)
 
 
 func apply_ui_theme():
@@ -422,60 +498,51 @@ func material(color_value, metal = 0.0, roughness = 0.65):
 
 
 func build_stage():
+	arena = ARENA.new()
+	arena.quality_level = GRAPHICS.resolve(preferences.values.quality,RenderingServer.get_video_adapter_name())
 	var world = WorldEnvironment.new()
 	world.environment = Environment.new()
 	stage_environment = world.environment
-	world.environment.background_mode = Environment.BG_COLOR
-	world.environment.background_color = Color("101929")
-	world.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	world.environment.ambient_light_color = Color("d8e3f2")
-	world.environment.ambient_light_energy = 0.45
-	# Metallic armor needs an environment to reflect. A color background alone
-	# leaves these PBR materials black, even with strong direct illumination.
-	var sky_material = ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color("7388a5")
-	sky_material.sky_horizon_color = Color("d6dfeb")
-	sky_material.ground_horizon_color = Color("b5becd")
-	sky_material.ground_bottom_color = Color("414f65")
-	sky_material.sky_energy_multiplier = 0.5
-	sky_material.ground_energy_multiplier = 0.35
-	world.environment.sky = Sky.new()
-	world.environment.sky.sky_material = sky_material
-	world.environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	world.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	world.environment.ssao_enabled = true
 	world.environment.ssao_radius = 0.2
 	world.environment.ssao_intensity = 1.5
+	arena.configure_environment(world.environment)
 	viewport.add_child(world)
 	var light = DirectionalLight3D.new()
 	directional_light = light
-	light.rotation_degrees = Vector3(-60, -25, 0)
-	light.light_energy = 0.75
+	light.basis = Basis.looking_at(-ARENA.SUN_DIRECTION, Vector3.UP)
+	light.light_energy = 1.1
 	light.light_color = Color("fff1d8")
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance = 30
 	light.shadow_bias = 0.025
+	light.shadow_normal_bias = 0.18
+	light.light_angular_distance = 0.7
 	viewport.add_child(light)
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-40, 155, 0)
 	fill.light_color = Color("c5dbff")
-	fill.light_energy = 0.35
+	fill.light_energy = 0.07
 	viewport.add_child(fill)
 	camera = Camera3D.new()
-	camera.fov = 40
+	camera.fov = 55
+	camera.far = 260
 	viewport.add_child(camera)
 	position_camera()
 	board_root = Node3D.new()
 	viewport.add_child(board_root)
 	viewport.add_child(BOARD_FRAME.instantiate())
-	add_box(Vector3(200, 0.1, 200), Vector3(0, -0.55, 0), material(Color("080e19"), 0.0, 0.9))
+	viewport.add_child(arena)
 	for rank in range(8):
 		for file in range(8):
 			var name_value = "abcdefgh"[file] + str(rank + 1)
 			var body = StaticBody3D.new()
+			body.collision_layer = 1
+			body.collision_mask = 0
 			body.set_meta("square", name_value)
 			body.position = world_square(name_value)
 			var mesh = MeshInstance3D.new()
+			mesh.layers = 2
 			mesh.mesh = BoxMesh.new()
 			mesh.mesh.size = Vector3(0.995, 0.18, 0.995)
 			mesh.material_override = tile_material(Color("a8b5bc") if (file + rank) % 2 else Color("23354a"))
@@ -505,18 +572,44 @@ func add_box(size_value, position_value, paint):
 
 
 func tile_material(color_value, highlighted = false):
+	var key = str(color_value) + str(highlighted)
+	if tile_material_cache.has(key):
+		return tile_material_cache[key]
 	var result = ShaderMaterial.new()
 	result.shader = STONE_SHADER
 	result.set_shader_parameter("stone_color", color_value)
 	result.set_shader_parameter("highlight", 1.0 if highlighted else 0.0)
+	result.set_shader_parameter("stone_map",preload("res://assets/arena/limestone.png"))
+	tile_material_cache[key] = result
 	return result
 
 
 func set_graphics_quality(index):
-	cards_row.set_quality(index)
-	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][index]
-	directional_light.shadow_enabled = index > 0
-	stage_environment.ssao_enabled = index == 2
+	graphics_level = GRAPHICS.resolve(index, RenderingServer.get_video_adapter_name())
+	var config = GRAPHICS.configuration(graphics_level, preferences.values.render_scale)
+	cards_row.set_quality(graphics_level)
+	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if RenderingServer.get_current_rendering_method() == "forward_plus" else Viewport.SCALING_3D_MODE_BILINEAR
+	viewport.scaling_3d_scale = config.scale
+	viewport.fsr_sharpness = 0.3
+	viewport.msaa_3d = Viewport.MSAA_4X if graphics_level == 2 else Viewport.MSAA_2X
+	viewport.mesh_lod_threshold = config.lod
+	viewport.texture_mipmap_bias = [0.35,0.15,0.0][graphics_level]
+	viewport.anisotropic_filtering_level = [Viewport.ANISOTROPY_2X,Viewport.ANISOTROPY_4X,Viewport.ANISOTROPY_8X][graphics_level]
+	RenderingServer.directional_shadow_atlas_set_size(config.shadow_size, false)
+	directional_light.shadow_enabled = preferences.values.shadows
+	directional_light.directional_shadow_max_distance = config.shadow_distance
+	directional_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if graphics_level == 2 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	directional_light.directional_shadow_split_1 = 0.4 if graphics_level == 0 else 0.15
+	directional_light.shadow_bias = [0.08,0.05,0.025][graphics_level]
+	directional_light.shadow_normal_bias = [1.0,0.65,0.25][graphics_level]
+	var advanced = RenderingServer.get_current_rendering_method() == "forward_plus"
+	stage_environment.ssao_enabled = config.ssao and advanced
+	stage_environment.ssil_enabled = config.ssil and advanced
+	stage_environment.ssao_radius = 0.6
+	stage_environment.ssao_intensity = 1.6
+	stage_environment.ssil_intensity = 0.7
+	if is_instance_valid(arena):
+		arena.set_quality(graphics_level)
 
 
 func add_coordinate(text_value, position_value, yaw):
@@ -542,6 +635,16 @@ func _unhandled_key_input(event):
 			settings_menu.hide()
 			get_viewport().set_input_as_handled()
 			return
+		if get_viewport().gui_get_focus_owner() is LineEdit and event.keycode in [KEY_I, KEY_HOME]:
+			return
+		if event.keycode == KEY_I or event.keycode == KEY_ESCAPE and inspection.inspecting:
+			toggle_inspection()
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_HOME:
+			reset_camera()
+			get_viewport().set_input_as_handled()
+			return
 		if event.keycode == KEY_F11:
 			cards_row.cancel()
 			_close_card_effects()
@@ -551,12 +654,55 @@ func _unhandled_key_input(event):
 
 
 func position_camera():
+	if inspection.inspecting:
+		return
 	var reverse = -1.0 if snapshot.get("viewer_side", "white") == "black" else 1.0
 	if top_view:
 		camera.position = Vector3(0, 13, 0.01 * reverse)
 	else:
 		camera.position = Vector3(sin(camera_yaw) * cos(camera_pitch), sin(camera_pitch), cos(camera_yaw) * cos(camera_pitch) * reverse) * camera_distance
 	camera.look_at(Vector3.ZERO if top_view else Vector3(0, 0, 0.65 * reverse))
+
+
+func toggle_inspection():
+	settings_menu.hide()
+	queued_picks.clear()
+	card_drop_queued = false
+	card_drag_active = false
+	cards_row.cancel()
+	_close_card_effects()
+	if inspection.inspecting:
+		inspection.leave(camera)
+	else:
+		inspection.enter(camera)
+	inspection_bar.visible = inspection.inspecting
+	cards_row.visible = not inspection.inspecting
+	settings_menu.set_inspection(inspection.inspecting)
+	log_event("INFO", "camera_inspection", {"status": "on" if inspection.inspecting else "off"})
+
+
+func reset_camera():
+	if inspection.inspecting:
+		toggle_inspection()
+	queued_picks.clear()
+	cards_row.cancel()
+	camera_yaw = 0.0
+	camera_pitch = 0.36
+	camera_distance = 12.8
+	position_camera()
+
+
+func graphics_report() -> Dictionary:
+	return {"version":ProjectSettings.get_setting("application/config/version"),"gpu":RenderingServer.get_video_adapter_name(),
+		"renderer":RenderingServer.get_current_rendering_method(),"quality":graphics_level,
+		"system_ram_gib":snappedf(float(OS.get_memory_info().get("physical",0))/1073741824.0,0.1),
+		"render_scale":viewport.scaling_3d_scale,"viewport":str(viewport.size),"fps":Engine.get_frames_per_second(),
+		"renderer_video_mib":snappedf(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)/1048576.0,0.1)}
+
+
+func copy_graphics_report():
+	DisplayServer.clipboard_set(JSON.stringify(graphics_report(),"\t"))
+	set_status("Diagnóstico gráfico copiado. Inclui GPU, perfil, resolução e FPS; nenhum dado da partida.")
 
 
 func world_square(value):
@@ -720,6 +866,8 @@ func connect_match():
 		set_status("Use HTTPS para servidores externos.")
 		return
 	if connected_match_id != match_id:
+		if inspection.inspecting:
+			toggle_inspection()
 		cards_row.reset()
 		_card_cancelled()
 		pending.clear()
@@ -787,6 +935,10 @@ func _retry_connection():
 
 
 func _process(_delta):
+	if is_instance_valid(fps_label) and fps_label.visible and Time.get_ticks_msec() >= next_fps_update:
+		var fps = Engine.get_frames_per_second()
+		fps_label.text = "%d FPS • %.1f ms" % [fps, 1000.0/fps] if fps > 0 else "FPS —"
+		next_fps_update = Time.get_ticks_msec()+250
 	socket.poll()
 	var now = Time.get_ticks_msec()
 	if session.has("access_token") and now > token_deadline - 60000 and not refresh_in_progress and not awaiting_refresh and connection_state not in ["connecting", "reconnecting", "failed"]:
@@ -994,16 +1146,22 @@ func update_tiles():
 
 
 func board_input(event):
+	if settings_menu.visible or is_instance_valid(card_effect_popup) and card_effect_popup.visible:
+		return
+	if inspection.inspecting:
+		if event is InputEventMouseMotion and event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+			inspection.look(camera, event.relative)
+		return
 	if card_drag_active or cards_row.busy():
 		return
 	if event is InputEventMouseMotion and event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 		camera_yaw -= event.relative.x * 0.005
-		camera_pitch = clamp(camera_pitch + event.relative.y * 0.005, 0.5, 1.45)
+		camera_pitch = clamp(camera_pitch + event.relative.y * 0.005, 0.32, 1.45)
 		position_camera()
 	if not event is InputEventMouseButton or not event.pressed:
 		return
 	if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		camera_distance = clamp(camera_distance + (-0.5 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.5), 8, 17)
+		camera_distance = clamp(camera_distance + (-0.5 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.5), 8, 20)
 		position_camera()
 		return
 	if event.button_index != MOUSE_BUTTON_LEFT or snapshot.is_empty() or connection_state != "connected" or settings_menu.visible:
@@ -1013,6 +1171,9 @@ func board_input(event):
 
 
 func _physics_process(_delta):
+	if inspection.inspecting:
+		queued_picks.clear()
+		return
 	if card_drag_active or card_drop_queued:
 		_process_card_pick()
 		queued_picks.clear()
@@ -1031,7 +1192,7 @@ func _physics_process(_delta):
 	while not queued_picks.is_empty():
 		var point = queued_picks.pop_front()
 		var origin = camera.project_ray_origin(point)
-		var query = PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(point) * 100)
+		var query = PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(point) * 100, 1)
 		var hit = world.direct_space_state.intersect_ray(query)
 		if not hit.is_empty() and hit.collider.has_meta("square"):
 			var square = hit.collider.get_meta("square")
@@ -1122,7 +1283,7 @@ func _process_card_pick():
 		if world != null and world.direct_space_state != null:
 			var point = local * Vector2(viewport.size) / stage.size
 			var origin = camera.project_ray_origin(point)
-			var hit = world.direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(point) * 100))
+			var hit = world.direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(point) * 100, 1))
 			if not hit.is_empty(): square = hit.collider.get_meta("square", "")
 	var result = CARD_TARGETS.resolve(snapshot, selected_card.get("definition_id", ""), square)
 	if card_preview_square != square or card_preview_valid != result.valid:
@@ -1169,12 +1330,15 @@ func _submit_card(target: Dictionary):
 
 func _card_resolved(definition: String, point: Vector2):
 	# This signal only belongs to this player's pending command. Hidden targets stay local.
+	if inspection.inspecting:
+		return
 	var local = stage.get_global_transform_with_canvas().affine_inverse() * point
 	var origin = camera.project_ray_origin(local * Vector2(viewport.size) / stage.size)
 	var direction = camera.project_ray_normal(local * Vector2(viewport.size) / stage.size)
 	if absf(direction.y) < 0.001: return
 	var position_value = origin + direction * (-origin.y / direction.y)
 	var ring = MeshInstance3D.new()
+	ring.layers = 2
 	ring.mesh = TorusMesh.new()
 	ring.mesh.inner_radius = 0.29
 	ring.mesh.outer_radius = 0.34
@@ -1250,8 +1414,18 @@ func _smoke_click_square(square):
 	for polygon in cards_row.projected_polygons.values():
 		if not cards_row.retracted and Geometry2D.is_point_in_polygon(local, polygon):
 			await _smoke_pointer(stage.get_global_transform_with_canvas() * Vector2(12, 12))
-			await get_tree().create_timer(0.7 if cards_row.animate_moves else 0.28).timeout
+			var deadline = Time.get_ticks_msec() + 4000
+			while Time.get_ticks_msec() < deadline:
+				await get_tree().process_frame
+				var covered = cards_row.projected_polygons.values().any(func(shape): return Geometry2D.is_point_in_polygon(local, shape))
+				if cards_row.retracted and not covered:
+					break
+			await get_tree().physics_frame
+			await get_tree().process_frame
 			break
+	# Native window resize events can arrive while the hand is retracting.
+	point = camera.unproject_position(world_square(square) + Vector3(0, 0.09, 0))
+	local = point * stage.size / Vector2(viewport.size)
 	await _smoke_mouse_click(stage.get_global_transform_with_canvas() * local)
 
 

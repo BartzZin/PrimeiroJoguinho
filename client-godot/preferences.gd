@@ -1,7 +1,7 @@
 extends RefCounted
 ## Preferences live apart from session credentials and are scoped to each profile.
 
-const DEFAULTS = {"detailed_logs": false, "quality": 2, "animations": true, "sound_effects": true, "top_view": false, "fullscreen": false, "sidebar_visible": false}
+const DEFAULTS = {"detailed_logs": false, "quality": 3, "render_scale": 0, "show_fps": false, "shadows": true, "animations": true, "sound_effects": true, "top_view": false, "fullscreen": false, "sidebar_visible": false}
 var values = DEFAULTS.duplicate()
 var path = ""
 
@@ -16,7 +16,10 @@ func load_profile(profile: String) -> Error:
 	for key in DEFAULTS:
 		var value = config.get_value("general", key, DEFAULTS[key])
 		if key == "quality":
-			if value is int and value >= 0 and value <= 2:
+			if value is int and value >= 0 and value <= 3:
+				values[key] = value
+		elif key == "render_scale":
+			if value is int and value in [0,67,75,85,100]:
 				values[key] = value
 		elif value is bool:
 			values[key] = value

@@ -90,7 +90,7 @@ func redraw():
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 func set_quality(index: int):
-	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][index]
+	viewport.msaa_3d = Viewport.MSAA_4X if index == 2 else Viewport.MSAA_2X
 	redraw()
 
 func busy() -> bool:

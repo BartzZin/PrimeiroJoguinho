@@ -4,24 +4,25 @@ extends RefCounted
 
 const SCENES = {
 	"white": {
-		"p": preload("res://assets/models/blue/pawn.glb"),
-		"r": preload("res://assets/models/blue/rook.glb"),
-		"n": preload("res://assets/models/blue/knight.glb"),
-		"b": preload("res://assets/models/blue/bishop.glb"),
-		"q": preload("res://assets/models/blue/queen.glb"),
-		"k": preload("res://assets/models/blue/king.glb"),
+		"p": "res://assets/models/blue/pawn.glb",
+		"r": "res://assets/models/blue/rook.glb",
+		"n": "res://assets/models/blue/knight.glb",
+		"b": "res://assets/models/blue/bishop.glb",
+		"q": "res://assets/models/blue/queen.glb",
+		"k": "res://assets/models/blue/king.glb",
 	},
 	"black": {
-		"p": preload("res://assets/models/red/pawn.glb"),
-		"r": preload("res://assets/models/red/rook.glb"),
-		"n": preload("res://assets/models/red/knight.glb"),
-		"b": preload("res://assets/models/red/bishop.glb"),
-		"q": preload("res://assets/models/red/queen.glb"),
-		"k": preload("res://assets/models/red/king.glb"),
+		"p": "res://assets/models/red/pawn.glb",
+		"r": "res://assets/models/red/rook.glb",
+		"n": "res://assets/models/red/knight.glb",
+		"b": "res://assets/models/red/bishop.glb",
+		"q": "res://assets/models/red/queen.glb",
+		"k": "res://assets/models/red/king.glb",
 	},
 }
 const HEIGHTS = {"p": 0.94, "r": 1.04, "n": 1.12, "b": 1.18, "q": 1.26, "k": 1.30}
 const MAX_FOOTPRINT = 0.84
+static var loaded_scenes = {}
 
 
 static func mesh_bounds(node: Node3D, parent_transform := Transform3D.IDENTITY) -> AABB:
@@ -38,7 +39,12 @@ static func mesh_bounds(node: Node3D, parent_transform := Transform3D.IDENTITY) 
 
 
 static func create(kind: String, side: String) -> Node3D:
-	var model = SCENES[side][kind].instantiate()
+	var path = SCENES[side][kind]
+	if not loaded_scenes.has(path):
+		loaded_scenes[path] = load(path)
+	var model = loaded_scenes[path].instantiate()
+	for mesh in model.find_children("*", "MeshInstance3D",true,false):
+		mesh.layers = 2
 	var bounds = mesh_bounds(model)
 	var factor = minf(HEIGHTS[kind] / bounds.size.y, MAX_FOOTPRINT / maxf(bounds.size.x, bounds.size.z))
 	# Sources have their origin at half height. Put the base on the board and

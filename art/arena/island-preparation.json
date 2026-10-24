@@ -1,0 +1,14 @@
+{
+  "source": "model.glb",
+  "filled_boundary_edges": 0,
+  "discarded_isolated_noise_faces": 31,
+  "boundary_edges": 0,
+  "nonmanifold_edges": 0,
+  "master_triangles": 119938,
+  "runtime_discarded_noise_faces": 20,
+  "runtime_boundary_edges": 0,
+  "runtime_nonmanifold_edges": 0,
+  "runtime_triangles": 23980,
+  "normal_texture": 2048,
+  "target_size": -12.0
+}

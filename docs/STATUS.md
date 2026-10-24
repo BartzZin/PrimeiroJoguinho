@@ -1,5 +1,17 @@
 # Status verificável — 20/10/2026
 
+## Arena celestial — 24/10/2026, versão 0.1.6
+
+- Ambiente 3D persistente em 360°, plataforma completa de 24 unidades, oito grupos ornamentais, dois palácios, seis ilhas secundárias, fragmentos, pontes conectadas, cachoeiras, bandeiras e céu contínuo. Reinos fixos no mundo, iluminação coerente com a direção do sol e camadas de seleção separadas da decoração.
+- Câmera de inspeção por I/configurações, com olhar livre, retorno exato, Home e Esc/F11. A mão fica temporariamente oculta na inspeção; relógios, snapshots e comandos enviados continuam ativos.
+- Quatro módulos gerados em 512/24 passos, seed 42; pilar comparado com 12 passos. Malhas finais auditadas: zero bordas abertas, arestas não manifold e faces degeneradas; mapas normais presentes. Fontes e relatórios preservados em `art/arena/`.
+- Validações locais: 42 testes de servidor aprovados e um teste PostgreSQL reservado para a CI; cartas com gestos das 12 magias; 1.785 verificações de peças/áudio; modelos, diagnóstico e arena aprovados. Duas instâncias da build Windows 0.1.6 sincronizaram congelamento, jogada e reconexão sem duplicar a conjuração.
+- Medição GPU em Full HD/RTX 5060, cinco cartas e 32 peças, sem geração concorrente: amostras por qualidade e órbita contínua registradas em `art/arena/performance.json`. O jogo mantém limite de 60 FPS; o teste desativa limite e VSync para medir a margem de desempenho. Não define requisitos mínimos para outras máquinas.
+- Perfis Desempenho/Equilibrado/Alto e detecção automática para novos perfis, com referência em GTX 1050/1650 e 8–16 GB de RAM. Escala interna independente da interface, sombras por orçamento, filtros de textura e LOD, carregamento de peças por demanda, contador FPS e diagnóstico copiável. GTX 1050/1650 reais não estavam disponíveis para medir.
+- Reserva do atlas reduzida a quatro cubemaps, com uma captura local na cena. Medição estimada do renderizador: aproximadamente 808/916/1.146 MiB de memória gráfica para Desempenho/Equilibrado/Alto. O uso total do driver pode diferir.
+- Realismo: céu HDRI CC0 com iluminação em cache, materiais de pedra com textura/relevo/rugosidade, placas chanfradas e juntas, balaustradas arqueadas, sombras de contato, SSIL no Alto e cabeçalho compacto. Vulkan e OpenGL Compatibility validados; efeitos indisponíveis são desligados.
+- Aviso conhecido: ao usar reflexo local em Vulkan, o Godot informa sete RIDs de textura não liberados ao encerrar o processo. Não foram observados erros de script durante as partidas. O modo Desempenho em processo novo não cria a captura e não apresenta esse aviso. O registro permanece disponível para investigação.
+
 ## Implementado e verificado localmente
 
 - Godot 4.7.2, templates correspondentes e Blender 4.5.3 LTS portáteis instalados em `.tools`, com checksums oficiais verificados.

@@ -1,0 +1,10 @@
+{
+  "source": "model.glb",
+  "filled_boundary_edges": 6,
+  "boundary_edges": 6,
+  "nonmanifold_edges": 6,
+  "master_triangles": 119998,
+  "runtime_triangles": 23999,
+  "normal_texture": 4096,
+  "target_size": 3.2
+}

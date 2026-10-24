@@ -1,0 +1,9 @@
+{
+  "voxel": 0.003,
+  "faces": 119999,
+  "vertices": 59638,
+  "boundary_edges": 3,
+  "nonmanifold_edges": 3,
+  "texture": 2048,
+  "seconds": 15.495060911998735
+}

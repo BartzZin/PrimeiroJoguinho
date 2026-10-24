@@ -2,13 +2,17 @@ extends Control
 
 signal setting_changed(key: String, value: Variant)
 signal open_logs_requested
+signal inspection_requested
+signal graphics_report_requested
 
 var anchor_button: Control
 var panel: PanelContainer
 var content: VBoxContainer
 var logs_checkbox: CheckBox
 var quality: OptionButton
+var resolution_scale: OptionButton
 var toggles = {}
+var inspect_button: Button
 
 
 func _ready():
@@ -51,15 +55,40 @@ func _ready():
 	quality_label.text = "Qualidade gráfica"
 	content.add_child(quality_label)
 	quality = OptionButton.new()
-	for option in ["Baixo • sem sombras", "Médio • suavização 2×", "Alto • suavização 4×"]:
+	for option in ["Desempenho • GTX 1050 / 2 GB", "Equilibrado • GTX 1650 / 4 GB", "Alto • materiais e iluminação", "Automático • detectar placa"]:
 		quality.add_item(option)
 	quality.custom_minimum_size.y = 40
 	quality.item_selected.connect(func(index): setting_changed.emit("quality", index))
 	content.add_child(quality)
+	var scale_label = Label.new()
+	scale_label.text = "Resolução interna do cenário"
+	content.add_child(scale_label)
+	resolution_scale = OptionButton.new()
+	for option in ["Automática pelo perfil", "67% • mais leve", "75%", "85%", "100% • resolução nativa"]:
+		resolution_scale.add_item(option)
+	resolution_scale.item_selected.connect(func(index): setting_changed.emit("render_scale", [0,67,75,85,100][index]))
+	content.add_child(resolution_scale)
+	var scale_help = Label.new()
+	scale_help.text = "Textos, menus e cartas continuam na resolução da tela."
+	scale_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	scale_help.add_theme_font_size_override("font_size",14)
+	content.add_child(scale_help)
+	add_toggle("Sombras", "shadows")
+	add_toggle("Mostrar FPS", "show_fps")
+	var report = Button.new()
+	report.text = "Copiar diagnóstico gráfico"
+	report.custom_minimum_size.y = 40
+	report.pressed.connect(func(): graphics_report_requested.emit())
+	content.add_child(report)
 	add_toggle("Animações de movimento", "animations")
 	add_toggle("Efeitos sonoros", "sound_effects")
 	add_toggle("Visão superior", "top_view")
 	add_toggle("Tela cheia (F11)", "fullscreen")
+	inspect_button = Button.new()
+	inspect_button.custom_minimum_size.y = 40
+	inspect_button.text = "Inspecionar cenário (I)"
+	inspect_button.pressed.connect(func(): inspection_requested.emit())
+	content.add_child(inspect_button)
 	resized.connect(reposition)
 	hide()
 
@@ -75,10 +104,15 @@ func add_toggle(text_value: String, key: String) -> CheckBox:
 	return control
 
 
+func set_inspection(value: bool):
+	inspect_button.text = "Voltar ao tabuleiro (I)" if value else "Inspecionar cenário (I)"
+
+
 func present(values: Dictionary):
 	for key in toggles:
 		toggles[key].set_pressed_no_signal(values[key])
 	quality.select(values.quality)
+	resolution_scale.select([0,67,75,85,100].find(values.render_scale))
 
 
 func toggle(values: Dictionary):

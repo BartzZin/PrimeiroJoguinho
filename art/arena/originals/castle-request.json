@@ -1,0 +1,14 @@
+{
+  "job_id": "b4c3e6a2-f354-44f6-8c09-40e3b91bb3cf",
+  "source_name": "castle.png",
+  "created_at": 1792863062.2958045,
+  "settings": {
+    "resolution": "512",
+    "seed": 42,
+    "steps": 24,
+    "texture_size": 2048,
+    "decimation_target": 120000,
+    "preserve_details": false,
+    "continuous_surface": true
+  }
+}

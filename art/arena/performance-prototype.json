@@ -1,0 +1,44 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"cards": 5,
+	"pieces": 32,
+	"profiles": [
+		{
+			"average_fps": 296.1054727694,
+			"frames": 360,
+			"max_draw_calls": 489,
+			"max_frame_ms": 3.678,
+			"max_primitives": 3905077,
+			"orbit_max_ms": 3.624,
+			"orbit_p95_ms": 3.588,
+			"p95_frame_ms": 3.52,
+			"quality": 2,
+			"renderer_texture_mib": 1243.4892578125
+		},
+		{
+			"average_fps": 367.302337777352,
+			"frames": 360,
+			"max_draw_calls": 426,
+			"max_frame_ms": 3.465,
+			"max_primitives": 3214230,
+			"orbit_max_ms": 3.007,
+			"orbit_p95_ms": 2.814,
+			"p95_frame_ms": 3.222,
+			"quality": 1,
+			"renderer_texture_mib": 1109.5986328125
+		},
+		{
+			"average_fps": 617.112530469931,
+			"frames": 360,
+			"max_draw_calls": 203,
+			"max_frame_ms": 1.916,
+			"max_primitives": 1334546,
+			"orbit_max_ms": 1.977,
+			"orbit_p95_ms": 1.712,
+			"p95_frame_ms": 1.678,
+			"quality": 0,
+			"renderer_texture_mib": 1006.6171875
+		}
+	],
+	"resolution": "1920x1080"
+}

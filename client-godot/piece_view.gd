@@ -79,6 +79,8 @@ func update_effects(effects: Array) -> void:
 	for effect: Dictionary in effects:
 		_frozen = _frozen or effect.get("kind") == "frozen"
 		var ring := MeshInstance3D.new()
+		ring.layers = 2
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var torus := TorusMesh.new()
 		torus.inner_radius = 0.32
 		torus.outer_radius = 0.4

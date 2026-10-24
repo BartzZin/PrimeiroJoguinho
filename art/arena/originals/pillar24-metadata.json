@@ -1,0 +1,91 @@
+{
+  "requested_resolution": "512",
+  "settings": {
+    "resolution": "512",
+    "seed": 42,
+    "steps": 24,
+    "texture_size": 4096,
+    "decimation_target": 120000,
+    "preserve_details": false,
+    "continuous_surface": true
+  },
+  "models_loaded": [
+    "shape_slat_decoder",
+    "tex_slat_decoder",
+    "sparse_structure_flow_model",
+    "sparse_structure_decoder",
+    "shape_slat_flow_model_512",
+    "tex_slat_flow_model_512"
+  ],
+  "device": "NVIDIA GeForce RTX 5060",
+  "models_loaded_this_attempt": [
+    "shape_slat_decoder",
+    "tex_slat_decoder",
+    "sparse_structure_flow_model",
+    "sparse_structure_decoder",
+    "shape_slat_flow_model_512",
+    "tex_slat_flow_model_512"
+  ],
+  "packages": {
+    "torch": "2.8.0+cu128",
+    "transformers": "5.20.2",
+    "gradio": "6.0.1",
+    "flex_gemm": "1.0.0",
+    "trimesh": "5.1.1"
+  },
+  "timings": {
+    "load_seconds": 61.13097862599898,
+    "sampling_seconds": 70.86662611099928,
+    "generation_seconds": 107.75202332499975,
+    "export_seconds": 64.7122652299986
+  },
+  "effective_resolution": 512,
+  "surface_repair": {
+    "voxel": 0.003,
+    "faces": 120000,
+    "vertices": 59922,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0,
+    "texture": 4096,
+    "seconds": 16.047569526999723
+  },
+  "surface_normals": {
+    "geometric_vertices": 59922,
+    "uv_vertices": 102593,
+    "normal_mode": "shared geometric normals"
+  },
+  "texture_finish": {
+    "size": 4096,
+    "black_pixels_repaired": 0,
+    "gutter_pixels": 5305616,
+    "black_threshold": 0,
+    "gutter": 16
+  },
+  "export_validation": {
+    "materials": 1,
+    "faces": 120000,
+    "vertices_welded": 59922,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0,
+    "duplicate_faces": 0,
+    "zero_area_triangles": 0,
+    "watertight": true,
+    "winding_consistent": true,
+    "max_normal_discontinuity": 0.0,
+    "bytes": 5643560
+  },
+  "finish_version": 8,
+  "export_settings": {
+    "texture_size": 4096,
+    "decimation_target": 120000,
+    "texture_format": "PNG",
+    "remesh": true,
+    "continuous_surface": true
+  },
+  "triangles": 120000,
+  "texture_size": 4096,
+  "peak_vram_allocated_mib": 3188.90576171875,
+  "peak_vram_reserved_mib": 3656.0,
+  "peak_rss_mib": 17786.76953125,
+  "worker_seconds": 237.05563007300043
+}

@@ -1,0 +1,16 @@
+{
+  "jobs": {
+    "pillar12": "5f5931e7-9065-46c2-a0ee-bcbb1192e161",
+    "pillar24": "05e3ac77-0787-448a-b94f-abb11cb64ca1",
+    "castle": "b4c3e6a2-f354-44f6-8c09-40e3b91bb3cf",
+    "island": "38fbe09f-b8fb-44fe-a87c-13d31cd7070c",
+    "crystal": "cf49f7be-45be-48ba-9aa2-7ed3335454e0"
+  },
+  "selected_pillar": "pillar24",
+  "resolution": 512,
+  "seed": 42,
+  "steps": 24,
+  "container_restart_policy": "no",
+  "base_image": "sha256:2e460d432eb227f637194d3b2f56f8d12e6a71d1536ded0c9a4b785dc77a1733",
+  "service_image": "sha256:2223519d347963f1093a141a8d164fa5cd3c6830251129c49c243909ee71bcaf"
+}

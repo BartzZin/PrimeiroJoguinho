@@ -1,0 +1,14 @@
+{
+  "job_id": "38fbe09f-b8fb-44fe-a87c-13d31cd7070c",
+  "source_name": "island.png",
+  "created_at": 1792863283.2595942,
+  "settings": {
+    "resolution": "512",
+    "seed": 42,
+    "steps": 24,
+    "texture_size": 2048,
+    "decimation_target": 120000,
+    "preserve_details": false,
+    "continuous_surface": true
+  }
+}
