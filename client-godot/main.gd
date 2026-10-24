@@ -7,6 +7,7 @@ const STONE_SHADER = preload("res://assets/board/stone.gdshader")
 const DIAGNOSTICS = preload("res://diagnostics.gd")
 const PREFERENCES = preload("res://preferences.gd")
 const SETTINGS_MENU = preload("res://settings_menu.gd")
+const CARD_HAND = preload("res://card_hand.gd")
 const CONNECTION_TIMEOUT_MS = 10000
 const RETRY_DELAYS_MS = [2000, 4000, 8000]
 const EFFECT_NAMES = {"shield": "escudo", "frozen": "imobilização", "ward": "proteção rúnica", "silence": "silêncio"}
@@ -18,7 +19,7 @@ var status_label: Label
 var info_label: Label
 var clocks_label: Label
 var target_label: Label
-var cards_row: HBoxContainer
+var cards_row: Control
 var history_box: VBoxContainer
 var effects_box: VBoxContainer
 var catalogue: RichTextLabel
@@ -145,6 +146,7 @@ func set_status(text_value):
 func apply_preferences():
 	apply_sidebar_visibility(preferences.values.sidebar_visible)
 	animate_moves = preferences.values.animations
+	cards_row.animate_moves = animate_moves
 	top_view = preferences.values.top_view
 	set_graphics_quality(preferences.values.quality)
 	position_camera()
@@ -167,6 +169,7 @@ func change_setting(key, value):
 		set_graphics_quality(value)
 	elif key == "animations":
 		animate_moves = value
+		cards_row.animate_moves = value
 	elif key == "top_view":
 		top_view = value
 		position_camera()
@@ -268,8 +271,8 @@ func build_ui():
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	stage.add_child(viewport)
 	info_label = label("Entre com um convite para criar uma sala ou iniciar o tutorial.", main_column)
-	cards_row = HBoxContainer.new()
-	cards_row.custom_minimum_size.y = 140
+	cards_row = CARD_HAND.new()
+	cards_row.card_selected.connect(select_card)
 	main_column.add_child(cards_row)
 	var scroll = ScrollContainer.new()
 	sidebar_scroll = scroll
@@ -479,6 +482,7 @@ func tile_material(color_value, highlighted = false):
 
 
 func set_graphics_quality(index):
+	cards_row.set_quality(index)
 	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][index]
 	directional_light.shadow_enabled = index > 0
 	stage_environment.ssao_enabled = index == 2
@@ -914,35 +918,8 @@ func render_snapshot():
 				root.add_child(ring)
 		if animate_moves and root.position != destination:
 			create_tween().tween_property(root, "position", destination, 0.2)
-	for child in cards_row.get_children():
-		child.queue_free()
-	for card in snapshot.my_hand:
-		var definition = cards.get(card.definition_id, {"name": card.definition_id, "mana_cost": 0, "text": ""})
-		var card_button = button("", cards_row, select_card.bind(card))
-		card_button.custom_minimum_size = Vector2(140, 135)
-		card_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card_button.tooltip_text = definition.text
-		card_button.disabled = not snapshot.can_cast or snapshot.my_mana < definition.mana_cost
-		var card_layout = VBoxContainer.new()
-		card_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		card_layout.offset_left = 6
-		card_layout.offset_right = -6
-		card_layout.offset_top = 8
-		card_layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card_button.add_child(card_layout)
-		var icon = TextureRect.new()
-		icon.texture = load("res://assets/cards/" + card.definition_id + ".svg")
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size.y = 44
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card_layout.add_child(icon)
-		var title = label(definition.name, card_layout, 16)
-		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var cost_label = label(str(int(definition.mana_cost)) + " MANA", card_layout, 15)
-		cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cost_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cards_row.animate_moves = animate_moves
+	cards_row.update_hand(snapshot.my_hand, cards, snapshot.get("can_cast", false), int(snapshot.my_mana))
 	if snapshot.tutorial == null:
 		info_label.text = "%s • Sua mana %s/5 • Rival %s/5 • Mão rival %s • Baralho %s" % ["Sua vez" if snapshot.active_side == snapshot.viewer_side else "Vez do adversário", int(snapshot.my_mana), int(snapshot.opponent_mana), int(snapshot.opponent_hand_count), int(snapshot.my_deck_count)]
 	if snapshot.status != "active":
@@ -953,6 +930,7 @@ func render_snapshot():
 
 
 func clear_selection():
+	cards_row.select("")
 	selected_square = ""
 	selected_card = {}
 	selected_target = {}
@@ -1073,6 +1051,7 @@ func choose_promotion(origin, target):
 func select_card(card):
 	clear_selection()
 	selected_card = card
+	cards_row.select(str(card.instance_id))
 	target_label.text = cards.get(card.definition_id, {"name": card.definition_id}).name + ": selecione o alvo e confirme."
 	if card.definition_id in ["arcane_focus", "arcane_draw", "silence_seal", "temporal_boost"]:
 		target_label.text = "Alvo automático. Confirme Conjurar."

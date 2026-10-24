@@ -1,0 +1,152 @@
+{
+  "job_id": "3fe99325-4f31-48a8-81a5-abcee4e46711",
+  "model": "client-godot/assets/cards/models/card.glb",
+  "reference_sha256": "027dcbfb429b1e5a5769c587f8d610ea3bc8c7baed8135dbe5ca2bdc2155c458",
+  "metadata": {
+    "requested_resolution": "512",
+    "settings": {
+      "resolution": "512",
+      "seed": 42,
+      "steps": 12,
+      "texture_size": 1024,
+      "decimation_target": 20000,
+      "preserve_details": false,
+      "continuous_surface": true
+    },
+    "models_loaded": [
+      "shape_slat_decoder",
+      "tex_slat_decoder",
+      "sparse_structure_flow_model",
+      "sparse_structure_decoder",
+      "shape_slat_flow_model_512",
+      "tex_slat_flow_model_512"
+    ],
+    "device": "NVIDIA GeForce RTX 5060",
+    "models_loaded_this_attempt": [
+      "shape_slat_decoder",
+      "tex_slat_decoder",
+      "sparse_structure_flow_model",
+      "sparse_structure_decoder",
+      "shape_slat_flow_model_512",
+      "tex_slat_flow_model_512"
+    ],
+    "packages": {
+      "torch": "2.8.0+cu128",
+      "transformers": "5.20.2",
+      "gradio": "6.0.1",
+      "flex_gemm": "1.0.0",
+      "trimesh": "5.1.1"
+    },
+    "timings": {
+      "load_seconds": 70.70897812900012,
+      "sampling_seconds": 76.01477433600007,
+      "generation_seconds": 108.17752250100011,
+      "export_seconds": 34.530039863999946
+    },
+    "effective_resolution": 512,
+    "surface_repair": {
+      "voxel": 0.003,
+      "faces": 20000,
+      "vertices": 10002,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "texture": 1024,
+      "seconds": 7.925929386000007
+    },
+    "surface_normals": {
+      "geometric_vertices": 10002,
+      "uv_vertices": 14169,
+      "normal_mode": "shared geometric normals"
+    },
+    "texture_finish": {
+      "size": 1024,
+      "black_pixels_repaired": 0,
+      "gutter_pixels": 516599,
+      "black_threshold": 0,
+      "gutter": 16
+    },
+    "export_validation": {
+      "materials": 1,
+      "faces": 20000,
+      "vertices_welded": 10002,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "duplicate_faces": 0,
+      "zero_area_triangles": 0,
+      "watertight": true,
+      "winding_consistent": true,
+      "max_normal_discontinuity": 0.0,
+      "bytes": 1424616
+    },
+    "finish_version": 8,
+    "export_settings": {
+      "texture_size": 1024,
+      "decimation_target": 20000,
+      "texture_format": "PNG",
+      "remesh": true,
+      "continuous_surface": true
+    },
+    "triangles": 20000,
+    "texture_size": 1024,
+    "peak_vram_allocated_mib": 3188.90576171875,
+    "peak_vram_reserved_mib": 3656.0,
+    "peak_rss_mib": 17787.625,
+    "worker_seconds": 224.8349779319999
+  },
+  "official_modeler": "C:/Projetos/Modelador3d",
+  "image": "trellis2-rtx5060:isolated-v1",
+  "image_id": "sha256:2223519d347963f1093a141a8d164fa5cd3c6830251129c49c243909ee71bcaf",
+  "reference": "art/cards/references/arcane_shield.png",
+  "original_model": "art/cards/source/card-original.glb",
+  "original_sha256": "9243ae63426bae86c0cfbd89bfdb325ff519a5ad69634107ac29004f74277a92",
+  "face_images": {
+    "arcane_draw": {
+      "path": "client-godot/assets/cards/faces/arcane_draw.png",
+      "sha256": "077a8cc37e835d8925fed9c24a93ac9bc65fdd4e8662a379ae1cf89e6942dddf"
+    },
+    "arcane_focus": {
+      "path": "client-godot/assets/cards/faces/arcane_focus.png",
+      "sha256": "c7b1a43558fea85d8a95be679e98a5804f2d315dd53783063ec6fcb0be319f98"
+    },
+    "arcane_shield": {
+      "path": "client-godot/assets/cards/faces/arcane_shield.png",
+      "sha256": "027dcbfb429b1e5a5769c587f8d610ea3bc8c7baed8135dbe5ca2bdc2155c458"
+    },
+    "dispel": {
+      "path": "client-godot/assets/cards/faces/dispel.png",
+      "sha256": "b02c23fdbd4772a766866c1a649523e5787decaabde284d652a044c01d0637da"
+    },
+    "frost_bind": {
+      "path": "client-godot/assets/cards/faces/frost_bind.png",
+      "sha256": "8e295c8056e8417aa36e09928b117bf56fd7592a83be1d33523116353280aff9"
+    },
+    "hidden_snare": {
+      "path": "client-godot/assets/cards/faces/hidden_snare.png",
+      "sha256": "0bc444c276c80d5baa2ed9ee2a78f0526bd0ae9ba099a8b17a8409748815d214"
+    },
+    "oracle_eye": {
+      "path": "client-godot/assets/cards/faces/oracle_eye.png",
+      "sha256": "d78082965c832ffe0a00496d6f50fd30c82380f8e98e31dc85ffad1ede64248f"
+    },
+    "shield_break": {
+      "path": "client-godot/assets/cards/faces/shield_break.png",
+      "sha256": "43e5cccae33853f5002b51f72d9a217a1a7c1292ae057c52feeab481c4f9e5bc"
+    },
+    "silence_seal": {
+      "path": "client-godot/assets/cards/faces/silence_seal.png",
+      "sha256": "d61cac2af7ad282e3dfed1721c2a96f384446a1be4c1846061a49197cfa7bd10"
+    },
+    "temporal_boost": {
+      "path": "client-godot/assets/cards/faces/temporal_boost.png",
+      "sha256": "9d88b57223f5759916aec3a400ecc686d6e60ae81732c45bc65c2a73741208d1"
+    },
+    "trap_disarm": {
+      "path": "client-godot/assets/cards/faces/trap_disarm.png",
+      "sha256": "0ba488fec1f0e7a527a673cd94d8f5be615b6843da32b9f3ae33e66c8be753d6"
+    },
+    "ward": {
+      "path": "client-godot/assets/cards/faces/ward.png",
+      "sha256": "acbca1de5949c7f6cdf4eab95dac0fbc485c622bac4d49d4838c610b76bdbe66"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "source": "art/cards/source/card-original.glb",
+  "source_bounds": [
+    [
+      -0.37634050846099854,
+      -0.0848904624581337,
+      -0.5019446611404419
+    ],
+    [
+      0.37634992599487305,
+      0.0846480205655098,
+      0.5019608736038208
+    ]
+  ],
+  "shared_model": "client-godot/assets/cards/models/card.glb",
+  "models": 1,
+  "triangles": 1528,
+  "dimensions": [
+    0.98,
+    1.55,
+    0.09
+  ],
+  "face_node": "Artwork",
+  "preparation": "Extract generated silhouette, normalize, remove spell-specific relief, add shared rim and replaceable UV face."
+}

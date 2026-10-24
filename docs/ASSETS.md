@@ -7,6 +7,7 @@
 - As configurações `.glb.import` usam `gltf/embedded_image_handling=2`: [texturas embutidas em Basis Universal](https://docs.godotengine.org/en/4.6/classes/class_gltfstate.html#enum-gltfstate-handlebinaryimagemode), compactadas para memória gráfica. Isso evita cópias extraídas ao lado dos GLBs; os arquivos de origem permanecem intactos.
 - Miniaturas procedurais anteriores: gerador preservado em `tools/generate_models.py`, agora com saída em `.runtime/prototype-models`, fora dos recursos do jogo.
 - Doze símbolos de cartas `.svg`: desenhos vetoriais originais de `tools/generate_card_icons.py`.
+- Cartas da mão: um único GLB compartilhado, preparado a partir do modelador oficial `C:\Projetos\Modelador3d`, com 12 imagens intercambiáveis geradas por `imagegen`/`image_gen`. Original, parâmetros e prompts preservados em `art/cards/`; detalhes em `art/cards/README.md`. Os SVGs anteriores permanecem como fontes de referência dos símbolos.
 - Engrenagem de configurações: desenho vetorial original em `client-godot/assets/ui/gear.svg`.
 - Ícone de três riscos da barra lateral: desenho vetorial original em `client-godot/assets/ui/menu.svg`.
 - Moldura do tabuleiro: geometria original com bordas arredondadas e incrustações de latão, gerada por `tools/generate_board.py` em `client-godot/assets/board/frame.glb` com Blender 4.5.3 LTS.
